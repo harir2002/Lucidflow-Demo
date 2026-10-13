@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# Build / cache
+frontend/dist/
+frontend/.vite/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Runtime data (local scans)
+backend/data/*.db
+backend/data/*.db-*
+backend/data/license.key
+backend/screenshots/*
+!backend/screenshots/.gitkeep
+backend/reports/*
+!backend/reports/.gitkeep
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.swp

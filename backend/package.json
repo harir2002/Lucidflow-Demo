@@ -1,0 +1,20 @@
+{
+  "name": "irdai-local-backend",
+  "version": "1.0.0",
+  "description": "IRDAI Dark Pattern Scanner — fully local backend (no external API, no internet after setup)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.1.2",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "pdfkit": "^0.15.0",
+    "playwright": "^1.45.0",
+    "sharp": "^0.35.3",
+    "socket.io": "^4.7.5",
+    "uuid": "^9.0.1"
+  }
+}
