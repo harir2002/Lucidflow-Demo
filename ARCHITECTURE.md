@@ -8,7 +8,8 @@ It is organized **file by file**. For each file you get:
 - What it imports / exports
 - A **line-range walkthrough** of every major block (equivalent to reading the file top-to-bottom)
 
-> **Note on “line by line”:** Dumping every individual line of JSX/PDF drawing code here would be unreadable. Instead, every significant block is mapped to exact line ranges so you can open the file and follow along. Setup/run steps remain in [`SETUP.md`](./SETUP.md).
+> **Note on “line by line”:** Dumping every individual line of JSX/PDF drawing code here would be unreadable. Instead, every significant block is mapped to exact line ranges so you can open the file and follow along. Setup/run steps remain in [`SETUP.md`](./SETUP.md).  
+For a **plain-English complete analysis** (crawl, URL discovery, trust of scans, dark-pattern rules for developers and non-technical readers), see [`COMPLETE_APPLICATION_ANALYSIS.md`](./COMPLETE_APPLICATION_ANALYSIS.md).
 
 ---
 
@@ -62,7 +63,7 @@ IRDAI Local Suite Dark Pattern Finder/
 | Frontend (`npm run dev` in `frontend/`) | **5173** | React UI |
 | Ollama (often on another LAN PC) | **11434** | Local model (`gemma3:4b`) |
 
-Default Ollama host in code: `http://192.168.1.177:11434` (override with `OLLAMA_HOST`).
+Default Ollama host in code: `http://192.168.2.107:11434` (override with `OLLAMA_HOST`).
 
 ---
 
@@ -340,7 +341,7 @@ Mounted at `/api/system` → full path **`GET /api/system/status`**.
 
 | Variable | Default | Applies to |
 |----------|---------|------------|
-| `OLLAMA_HOST` | `http://192.168.1.177:11434` | All Ollama calls |
+| `OLLAMA_HOST` | `http://192.168.2.107:11434` | All Ollama calls |
 | `OLLAMA_MODEL` | `gemma3:4b` | Model name (multimodal) |
 | `OLLAMA_TAGS_TIMEOUT_MS` | `5000` | Health only |
 | `OLLAMA_GENERATE_TIMEOUT_MS` | `0` (wait forever) | Optional hard abort |
@@ -608,7 +609,7 @@ No sockets — refresh is on mount / filter change.
 | Topic | First / outsourced | Current |
 |-------|--------------------|---------|
 | AI input | Screenshot + DOM (vision) | **Same — vision restored** (screenshot base64 + DOM) |
-| Ollama host default | `http://localhost:11434` | `http://192.168.1.177:11434` (`OLLAMA_HOST`) |
+| Ollama host default | `http://localhost:11434` | `http://192.168.2.107:11434` (`OLLAMA_HOST`) |
 | Generate transport | Typical fetch-style client | Node `http`/`https`, socket timeout disabled |
 | Product shell | Express + React + Playwright + SQLite + PDF | Unchanged |
 

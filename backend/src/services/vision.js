@@ -2,7 +2,7 @@
  * Local Vision Analysis via Ollama — screenshot + DOM text sent to the model.
  * Screenshots are also kept on disk for UI/PDF reports.
  *
- * Default API: http://192.168.1.177:11434 (override with OLLAMA_HOST env).
+ * Default API: http://192.168.2.107:11434 (override with OLLAMA_HOST env).
  *
  * Uses Node http/https for /api/generate (no undici ~5min headersTimeout).
  * The 5s timeout applies ONLY to /api/tags health checks.
@@ -14,7 +14,7 @@ const https = require('https');
 const { URL } = require('url');
 const { PATTERNS, resolveSeverity } = require('./severity');
 
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://192.168.1.177:11434';
+const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://192.168.2.107:11434';
 const MODEL_NAME = process.env.OLLAMA_MODEL || 'gemma3:4b';
 // Optional hard abort for the whole generate call (0 = wait until Ollama finishes).
 const GENERATE_TIMEOUT_MS = parseInt(process.env.OLLAMA_GENERATE_TIMEOUT_MS || '0', 10);
