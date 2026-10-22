@@ -1,6 +1,8 @@
 const express = require('express');
 const { v4: uuid } = require('uuid');
 const db = require('../db/database');
+const fs = require('fs');
+const path = require('path');
 const { startScan, pauseScan, resumeScan, cancelScan, isScanActive } = require('../services/scanOrchestrator');
 
 module.exports = (io) => {
@@ -8,20 +10,56 @@ module.exports = (io) => {
 
   // Create + start a new scan
   router.post('/', (req, res) => {
-    const { target_url, url_pattern } = req.body;
+    const { target_url, url_pattern, scan_mode, selected_urls } = req.body;
     if (!target_url) return res.status(400).json({ error: 'target_url is required' });
+
+    // Validate scan_mode if provided
+    if (scan_mode && !['one-page', 'main-domain'].includes(scan_mode)) {
+      return res.status(400).json({ error: 'scan_mode must be "one-page" or "main-domain"' });
+    }
+
+    // Validate selected_urls if provided
+    if (selected_urls && (!Array.isArray(selected_urls) || !selected_urls.every(u => typeof u === 'string'))) {
+      return res.status(400).json({ error: 'selected_urls must be an array of strings' });
+    }
 
     let parsed;
     try { parsed = new URL(target_url); } catch { return res.status(400).json({ error: 'target_url is not a valid URL' }); }
 
     const id = uuid();
-    db.prepare(`INSERT INTO scans (id, target_url, url_pattern, status) VALUES (?, ?, ?, 'discovering')`)
-      .run(id, target_url, url_pattern || null);
+    db.prepare(`INSERT INTO scans (id, target_url, url_pattern, scan_mode, status) VALUES (?, ?, ?, ?, 'discovering')`)
+      .run(id, target_url, url_pattern || null, scan_mode || 'one-page');
 
     // Fire and forget — progress streamed via websocket
-    startScan(id, target_url, url_pattern, io).catch(err => console.error('Scan crashed:', err));
+    startScan(id, target_url, url_pattern, io, {
+      scanMode: scan_mode || 'one-page',
+      selectedUrls: selected_urls || []
+    }).catch(err => console.error('Scan crashed:', err));
 
     res.status(201).json({ id, target_url, status: 'discovering' });
+  });
+
+  // Discover URLs from a domain (for Main Domain mode)
+  router.post('/discover', async (req, res) => {
+    const { base_url } = req.body;
+    if (!base_url) return res.status(400).json({ error: 'base_url is required' });
+
+    try {
+      new URL(base_url);
+    } catch {
+      return res.status(400).json({ error: 'base_url is not a valid URL' });
+    }
+
+    try {
+      const discovery = await discoverAllUrls(base_url, null);
+      res.json({
+        urls: discovery.urls || [],
+        sitemapFound: discovery.sitemapFound || false,
+        demoLabel: discovery.demoLabel || null
+      });
+    } catch (err) {
+      res.status(500).json({ error: `Discovery failed: ${err.message}` });
+    }
   });
 
   // List all scans
@@ -139,9 +177,171 @@ module.exports = (io) => {
     if (isScanActive(req.params.id)) return res.status(409).json({ error: 'Scan already running' });
 
     db.prepare(`UPDATE scans SET status = 'scanning' WHERE id = ?`).run(req.params.id);
-    startScan(req.params.id, scan.target_url, scan.url_pattern, io).catch(err => console.error('Scan crashed:', err));
+    startScan(req.params.id, scan.target_url, scan.url_pattern, io, {
+      scanMode: scan.scan_mode || 'one-page',
+      selectedUrls: []
+    }).catch(err => console.error('Scan crashed:', err));
     res.json({ status: 'scanning' });
   });
+
+  // Seed endpoint: Load demo fixture data (idempotent)
+  router.post('/seed', (req, res) => {
+    try {
+      const fixtureData = req.body.fixture || loadFixtureFromFile();
+      const scansCreated = [];
+
+      if (!fixtureData.scans || !Array.isArray(fixtureData.scans)) {
+        return res.status(400).json({ error: 'Invalid fixture: scans array is required' });
+      }
+
+      const insertScan = db.prepare(`
+        INSERT OR IGNORE INTO scans (id, target_url, scan_mode, status)
+        VALUES (?, ?, ?, 'complete')
+      `);
+
+      const insertPage = db.prepare(`
+        INSERT OR IGNORE INTO pages (id, scan_id, url, title, overall_risk, summary)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+
+      const insertFinding = db.prepare(`
+        INSERT INTO findings (id, page_id, pattern_name, severity, evidence)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+
+      const insertRec = db.prepare(`
+        INSERT INTO recommendations (id, page_id, text, sort_order)
+        VALUES (?, ?, ?, ?)
+      `);
+
+      for (const scanFixture of fixtureData.scans) {
+        // Check if scan with this target_url already exists
+        const existingScan = db.prepare(`SELECT id FROM scans WHERE target_url = ?`).get(scanFixture.target_url);
+        if (existingScan) {
+          scansCreated.push({
+            scan_name: scanFixture.scan_name,
+            target_url: scanFixture.target_url,
+            status: 'skipped',
+            reason: 'Scan with this URL already exists'
+          });
+          continue;
+        }
+
+        const scanId = uuid();
+        const pageId = uuid();
+
+        // Determine overall_risk based on findings severity
+        let overallRisk = 'CLEAN';
+        if (scanFixture.findings && scanFixture.findings.length > 0) {
+          const hasMedium = scanFixture.findings.some(f => f.severity === 'MEDIUM');
+          const hasHigh = scanFixture.findings.some(f => f.severity === 'HIGH');
+          if (hasHigh) overallRisk = 'HIGH';
+          else if (hasMedium) overallRisk = 'MEDIUM';
+          else overallRisk = 'LOW';
+        }
+
+        // Insert scan record
+        insertScan.run(scanId, scanFixture.target_url, scanFixture.scan_mode || 'one-page');
+
+        // Insert page record
+        insertPage.run(
+          pageId,
+          scanId,
+          scanFixture.target_url,
+          scanFixture.scan_name || scanFixture.target_url,
+          overallRisk,
+          `Scan of ${scanFixture.target_url} — ${scanFixture.findings.length} findings`
+        );
+
+        // Insert findings
+        if (scanFixture.findings && Array.isArray(scanFixture.findings)) {
+          for (const finding of scanFixture.findings) {
+            insertFinding.run(
+              finding.finding_id || uuid(),
+              pageId,
+              finding.pattern_name,
+              finding.severity,
+              finding.evidence_title || finding.pattern_name
+            );
+          }
+        }
+
+        // Insert auto-generated recommendations based on findings
+        const recommendations = generateRecommendations(scanFixture.findings || []);
+        recommendations.forEach((rec, index) => {
+          insertRec.run(uuid(), pageId, rec, index);
+        });
+
+        scansCreated.push({
+          id: scanId,
+          scan_name: scanFixture.scan_name,
+          target_url: scanFixture.target_url,
+          scan_mode: scanFixture.scan_mode || 'one-page',
+          status: 'created',
+          findings_count: (scanFixture.findings || []).length
+        });
+      }
+
+      res.json({
+        success: true,
+        scansCreated
+      });
+    } catch (err) {
+      console.error('Seed error:', err);
+      res.status(500).json({ error: `Seed failed: ${err.message}` });
+    }
+  });
+
+  /**
+   * Load demo fixture from file
+   */
+  function loadFixtureFromFile() {
+    const fixtureFile = path.join(__dirname, '..', '..', 'data', 'demo-scans.json');
+    if (!fs.existsSync(fixtureFile)) {
+      throw new Error(`Fixture file not found: ${fixtureFile}`);
+    }
+    return JSON.parse(fs.readFileSync(fixtureFile, 'utf8'));
+  }
+
+  /**
+   * Generate summary recommendations based on findings
+   */
+  function generateRecommendations(findings) {
+    const recommendations = [];
+    const uniquePatterns = [...new Set(findings.map(f => f.pattern_name))];
+
+    if (uniquePatterns.includes('False Urgency')) {
+      recommendations.push('Review and remove artificial time pressure tactics from the user experience');
+    }
+    if (uniquePatterns.includes('Disguised ads')) {
+      recommendations.push('Clearly label all sponsored content and paid partnerships');
+    }
+    if (uniquePatterns.includes('Nagging')) {
+      recommendations.push('Implement frequency caps and clear dismiss options for all notifications');
+    }
+    if (uniquePatterns.includes('Forced action')) {
+      recommendations.push('Ensure all user actions are truly optional and not mandatory for progression');
+    }
+    if (uniquePatterns.includes('Subscription trap')) {
+      recommendations.push('Review renewal flows to ensure explicit informed consent');
+    }
+    if (uniquePatterns.includes('Interface Interference')) {
+      recommendations.push('Audit UI components to ensure all controls are accessible and visible');
+    }
+    if (uniquePatterns.includes('Trick question')) {
+      recommendations.push('Simplify language and remove confusing phrasing from all user-facing text');
+    }
+    if (uniquePatterns.includes('Drip pricing')) {
+      recommendations.push('Display complete pricing information upfront before checkout');
+    }
+
+    // Ensure at least one recommendation
+    if (recommendations.length === 0) {
+      recommendations.push('Conduct comprehensive accessibility and UX review');
+    }
+
+    return recommendations.slice(0, 5);
+  }
 
   return router;
 };

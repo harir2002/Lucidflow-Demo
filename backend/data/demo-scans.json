@@ -1,0 +1,187 @@
+{
+  "scans": [
+    {
+      "scan_name": "ABC Insurance",
+      "target_url": "https://insurance-deception-explorer.lovable.app",
+      "scan_mode": "one-page",
+      "findings": [
+        {
+          "finding_id": "ABC-001",
+          "pattern_name": "False Urgency",
+          "severity": "MEDIUM",
+          "evidence_title": "Time-limited countdown timer on policy purchase page",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Remove artificial countdown timers",
+            "Allow customers unrestricted time to review terms",
+            "Provide clear information about actual policy availability"
+          ],
+          "owner": "Product"
+        },
+        {
+          "finding_id": "ABC-002",
+          "pattern_name": "False Urgency",
+          "severity": "MEDIUM",
+          "evidence_title": "Fake stock depletion indicators suggesting limited policy slots",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Remove false stock indicators",
+            "Display accurate policy availability information",
+            "Avoid pressure tactics suggesting limited supply"
+          ],
+          "owner": "Marketing"
+        },
+        {
+          "finding_id": "ABC-003",
+          "pattern_name": "Disguised ads",
+          "severity": "MEDIUM",
+          "evidence_title": "Third-party policy recommendations styled as customer reviews",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Clearly label paid partnerships and sponsored content",
+            "Distinguish between verified customer reviews and promotional content",
+            "Disclose affiliate relationships prominently"
+          ],
+          "owner": "Marketing"
+        },
+        {
+          "finding_id": "ABC-004",
+          "pattern_name": "Disguised ads",
+          "severity": "MEDIUM",
+          "evidence_title": "Insurance comparison charts with hidden bias toward premium plans",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Present all plan options equally without visual bias",
+            "Use neutral comparison layouts",
+            "Clearly indicate any sponsored or featured positions"
+          ],
+          "owner": "Product"
+        },
+        {
+          "finding_id": "ABC-005",
+          "pattern_name": "Nagging",
+          "severity": "MEDIUM",
+          "evidence_title": "Persistent pop-ups appearing every 30 seconds during form filling",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Implement frequency caps on pop-ups",
+            "Provide dismiss buttons that remain available",
+            "Respect user preferences for notifications"
+          ],
+          "owner": "Product"
+        },
+        {
+          "finding_id": "ABC-006",
+          "pattern_name": "Forced action",
+          "severity": "MEDIUM",
+          "evidence_title": "Mandatory acceptance of promotional communications to proceed with purchase",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Make opt-ins truly optional",
+            "Provide clear opt-out mechanisms",
+            "Allow users to proceed without accepting promotional communications"
+          ],
+          "owner": "Compliance"
+        },
+        {
+          "finding_id": "ABC-007",
+          "pattern_name": "Subscription trap",
+          "severity": "LOW",
+          "evidence_title": "Auto-renewal checkbox pre-checked on renewal consent screen",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Require explicit user consent for auto-renewal",
+            "Present renewal terms clearly and prominently",
+            "Provide easy cancellation options"
+          ],
+          "owner": "Legal"
+        },
+        {
+          "finding_id": "ABC-008",
+          "pattern_name": "Trick question",
+          "severity": "LOW",
+          "evidence_title": "Confusing double-negative wording in policy exclusions",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Use clear, plain language for policy terms",
+            "Avoid double negatives and confusing phrasing",
+            "Provide examples of what is and is not covered"
+          ],
+          "owner": "Legal"
+        },
+        {
+          "finding_id": "ABC-009",
+          "pattern_name": "Drip pricing",
+          "severity": "LOW",
+          "evidence_title": "Additional mandatory fees revealed only at final checkout step",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Display total price upfront including all mandatory fees",
+            "Break down cost components transparently",
+            "Avoid surprise charges at checkout"
+          ],
+          "owner": "Product"
+        },
+        {
+          "finding_id": "ABC-010",
+          "pattern_name": "Disguised ads",
+          "severity": "MEDIUM",
+          "evidence_title": "Influencer testimonials without clear disclosure of sponsorship",
+          "page_url": "https://insurance-deception-explorer.lovable.app",
+          "remediation_fix": [
+            "Add prominent #ad or sponsored tags to influencer content",
+            "Disclose all payment relationships with testimonial providers",
+            "Use standard industry disclosures for endorsements"
+          ],
+          "owner": "Marketing"
+        }
+      ]
+    },
+    {
+      "scan_name": "Alliance Insurance",
+      "target_url": "https://allianceinsurance.in/",
+      "scan_mode": "main-domain",
+      "findings": [
+        {
+          "finding_id": "ALLIANCE-001",
+          "pattern_name": "Interface Interference",
+          "severity": "MEDIUM",
+          "evidence_title": "Critical cancel button obscured by overlapping modal dialogs",
+          "page_url": "https://allianceinsurance.in/",
+          "remediation_fix": [
+            "Ensure cancel and close buttons are always clearly visible",
+            "Avoid overlapping modal dialogs",
+            "Test interface accessibility across all screen sizes"
+          ],
+          "owner": "Product"
+        },
+        {
+          "finding_id": "ALLIANCE-002",
+          "pattern_name": "Interface Interference",
+          "severity": "MEDIUM",
+          "evidence_title": "Terms and conditions link styled to blend with background",
+          "page_url": "https://allianceinsurance.in/",
+          "remediation_fix": [
+            "Use distinct styling for important links",
+            "Ensure sufficient color contrast per WCAG standards",
+            "Make terms and conditions easily discoverable"
+          ],
+          "owner": "Product"
+        },
+        {
+          "finding_id": "ALLIANCE-003",
+          "pattern_name": "Forced action",
+          "severity": "LOW",
+          "evidence_title": "Biometric verification mandatory for policy activation",
+          "page_url": "https://allianceinsurance.in/",
+          "remediation_fix": [
+            "Provide alternative authentication methods",
+            "Allow customers to use traditional verification if needed",
+            "Document accessibility accommodations"
+          ],
+          "owner": "Compliance"
+        }
+      ]
+    }
+  ]
+}
