@@ -18,8 +18,26 @@ export const api = {
   /** Manual readiness probe: GET /api/version + GET /api/tags on the Ollama host. */
   testOllamaConnection: () => request('/system/ollama/test', { method: 'POST' }),
 
-  createScan: (targetUrl, urlPattern) =>
-    request('/scans', { method: 'POST', body: JSON.stringify({ target_url: targetUrl, url_pattern: urlPattern }) }),
+  /** Discover URLs from a domain (Main Domain mode) */
+  discoverUrls: (baseUrl) =>
+    request('/scans/discover', { 
+      method: 'POST', 
+      body: JSON.stringify({ base_url: baseUrl }) 
+    }),
+
+  createScan: (targetUrl, urlPattern, scanMode, selectedUrls) =>
+    request('/scans', { 
+      method: 'POST', 
+      body: JSON.stringify({ 
+        target_url: targetUrl, 
+        url_pattern: urlPattern,
+        scan_mode: scanMode || 'one-page',
+        selected_urls: selectedUrls || []
+      }) 
+    }),
+
+  seedDemoScans: () =>
+    request('/scans/seed', { method: 'POST' }),
 
   listScans: () => request('/scans'),
   getScan: (id) => request(`/scans/${id}`),
