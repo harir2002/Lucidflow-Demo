@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
-import LicensePanel from '../components/LicensePanel';
 import DiscoveryPreview from '../components/DiscoveryPreview';
 
 export default function NewScan({ onScanCreated }) {
@@ -131,8 +130,6 @@ export default function NewScan({ onScanCreated }) {
         margin: '0 auto',
       }}
     >
-      <LicensePanel onLicenseChange={setLicense} />
-
       {/* MAIN FORM CARD */}
       <div className="card" style={{ marginBottom: 'var(--spacing-lg, 24px)' }}>
         {error && (
