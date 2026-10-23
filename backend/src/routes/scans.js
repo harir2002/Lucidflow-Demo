@@ -74,7 +74,7 @@ module.exports = (io) => {
     if (!scan) return res.status(404).json({ error: 'Scan not found' });
 
     const riskCounts = db.prepare(`
-      SELECT overall_risk, COUNT(*) as count FROM pages WHERE scan_id = ? GROUP BY overall_risk
+      SELECT severity, COUNT(*) as count FROM findings f JOIN pages p ON p.id = f.page_id WHERE p.scan_id = ? GROUP BY severity
     `).all(req.params.id);
 
     const findingsCount = db.prepare(`
@@ -92,7 +92,7 @@ module.exports = (io) => {
     res.json({
       ...scan,
       is_active: isScanActive(scan.id),
-      risk_counts: Object.fromEntries(riskCounts.map(r => [r.overall_risk, r.count])),
+      risk_counts: Object.fromEntries(riskCounts.map(r => [r.severity, r.count])),
       findings_count: findingsCount,
       top_patterns: topPatterns,
       manual_review_count: manualReviewCount,
@@ -102,20 +102,26 @@ module.exports = (io) => {
   // List pages for a scan (with findings)
   router.get('/:id/pages', (req, res) => {
     const { severity } = req.query;
-    let query = `SELECT * FROM pages WHERE scan_id = ?`;
+    let query = `SELECT DISTINCT p.* FROM pages p`;
     const params = [req.params.id];
-    if (severity && severity !== 'ALL') { query += ` AND overall_risk = ?`; params.push(severity); }
-    query += ` ORDER BY CASE overall_risk WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 WHEN 'LOW' THEN 2 WHEN 'CLEAN' THEN 3 ELSE 4 END`;
+    
+    if (severity && severity !== 'ALL') {
+      query += ` JOIN findings f ON f.page_id = p.id WHERE p.scan_id = ? AND f.severity = ?`;
+      params.push(severity);
+    } else {
+      query += ` WHERE p.scan_id = ?`;
+    }
+    query += ` ORDER BY CASE p.overall_risk WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 WHEN 'LOW' THEN 2 WHEN 'CLEAN' THEN 3 ELSE 4 END`;
 
     const pages = db.prepare(query).all(...params);
-    const findingsStmt = db.prepare(`SELECT * FROM findings WHERE page_id = ?`);
+    const findingsStmt = db.prepare(`SELECT * FROM findings WHERE page_id = ?${severity && severity !== 'ALL' ? ` AND severity = ?` : ''}`);
     const recsStmt = db.prepare(`SELECT text FROM recommendations WHERE page_id = ? ORDER BY sort_order`);
 
     const result = pages.map(p => ({
       ...p,
       dom_signals: p.dom_signals ? JSON.parse(p.dom_signals) : null,
       manual_review_reasons: p.manual_review_reasons ? JSON.parse(p.manual_review_reasons) : [],
-      findings: findingsStmt.all(p.id),
+      findings: severity && severity !== 'ALL' ? findingsStmt.all(p.id, severity) : findingsStmt.all(p.id),
       recommendations: recsStmt.all(p.id).map(r => r.text),
     }));
 
@@ -205,8 +211,8 @@ module.exports = (io) => {
       `);
 
       const insertFinding = db.prepare(`
-        INSERT INTO findings (id, page_id, pattern_name, severity, evidence)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO findings (id, page_id, pattern_id, pattern_name, severity, evidence)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
 
       const insertRec = db.prepare(`
@@ -259,6 +265,7 @@ module.exports = (io) => {
             insertFinding.run(
               finding.finding_id || uuid(),
               pageId,
+              0, // pattern_id placeholder
               finding.pattern_name,
               finding.severity,
               finding.evidence_title || finding.pattern_name
