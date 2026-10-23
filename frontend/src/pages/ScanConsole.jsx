@@ -1,14 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, FileText, ChevronRight, Clock, Download } from 'lucide-react';
+import { Play, Pause, FileText, ChevronRight, Clock, Download, Zap } from 'lucide-react';
 import { api } from '../api/client';
 
 export default function ScanConsole({ scanId, socket, onViewReport }) {
   const [scan, setScan] = useState(null);
   const [logs, setLogs] = useState([]);
   const [recentPages, setRecentPages] = useState([]);
+  const [recentFindings, setRecentFindings] = useState([]);
+  const [findingsCount, setFindingsCount] = useState(0);
+  const [severityBreakdown, setSeverityBreakdown] = useState({ HIGH: 0, MEDIUM: 0, LOW: 0 });
   const [manualCount, setManualCount] = useState(0);
   const [licenseLimited, setLicenseLimited] = useState(null);
   const logEndRef = useRef(null);
+  const findingsEndRef = useRef(null);
 
   const refreshScan = () => api.getScan(scanId).then(setScan).catch(() => {});
 
@@ -22,6 +26,28 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
     const onDiscovered = () => refreshScan();
     const onPageDone = (data) => {
       setRecentPages(prev => [data, ...prev.slice(0, 9)]);
+      
+      // Track new findings
+      if (data.findingsCount > 0) {
+        const newFinding = {
+          url: data.url,
+          title: data.title || data.url,
+          findingsCount: data.findingsCount,
+          risk: data.risk,
+          timestamp: Date.now(),
+        };
+        setRecentFindings(prev => [newFinding, ...prev.slice(0, 4)]);
+        setFindingsCount(prev => prev + data.findingsCount);
+        
+        // Update severity breakdown
+        if (data.risk === 'HIGH' || data.risk === 'MEDIUM' || data.risk === 'LOW') {
+          setSeverityBreakdown(prev => ({
+            ...prev,
+            [data.risk]: prev[data.risk] + data.findingsCount,
+          }));
+        }
+      }
+      
       refreshScan();
     };
     const onComplete = () => refreshScan();
@@ -50,6 +76,7 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
   }, [socket, scanId]);
 
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
+  useEffect(() => { findingsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [recentFindings]);
 
   useEffect(() => {
     api.getManualReview(scanId).then(items => setManualCount(items.filter(i => i.status === 'pending').length)).catch(() => {});
@@ -89,10 +116,11 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1, background: '#0B1929', marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 1, background: '#0B1929', marginBottom: 28 }}>
         {[
           { label: 'DISCOVERED', value: scan.total_pages },
           { label: 'SCANNED', value: scan.scanned_pages },
+          { label: 'FINDINGS', value: findingsCount, color: '#C9A961' },
           { label: 'HIGH RISK', value: riskCounts.HIGH || 0, color: '#B8442E' },
           { label: 'MEDIUM RISK', value: riskCounts.MEDIUM || 0, color: '#C99A2E' },
           { label: 'CLEAN', value: riskCounts.CLEAN || 0, color: '#4A7C59' },
@@ -104,7 +132,7 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24, marginBottom: 24 }}>
         <div style={{ background: 'white', border: '1px solid #D8D0C0' }}>
           <div style={{ padding: '14px 20px', borderBottom: '1px solid #D8D0C0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#EFE9DB' }}>
             <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: '0.06em', fontWeight: 500 }}>
@@ -154,7 +182,7 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
         <div style={{ background: 'white', border: '1px solid #D8D0C0' }}>
           <div style={{ padding: '14px 20px', borderBottom: '1px solid #D8D0C0', background: '#EFE9DB' }}>
             <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: '0.06em', fontWeight: 500 }}>
-              ▸ LATEST FINDINGS
+              ▸ LATEST PAGES SCANNED
             </span>
           </div>
           <div>
@@ -175,7 +203,95 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
             })}
           </div>
         </div>
+
+        <div style={{ background: 'white', border: '1px solid #D8D0C0' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid #D8D0C0', background: '#EFE9DB' }}>
+            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: '0.06em', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Zap size={13} /> FINDINGS DISCOVERED
+            </span>
+          </div>
+          <div style={{ padding: '20px' }}>
+            {scan.status === 'complete' ? (
+              <div>
+                <div style={{ marginBottom: 20, padding: '14px', background: '#F5F1E8', border: '1px solid #E8E0D0' }}>
+                  <div style={{ fontSize: 11, color: '#8B8378', marginBottom: 10 }}>SCAN COMPLETE — FINAL FINDINGS</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div style={{ textAlign: 'center', padding: '10px', background: 'white', border: '1px solid #D8D0C0' }}>
+                      <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 24, fontWeight: 700, color: '#0B1929' }}>{findingsCount}</div>
+                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8.5, color: '#8B8378', letterSpacing: '0.05em', marginTop: 4 }}>TOTAL FINDINGS</div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: 'white', border: '1px solid #D8D0C0' }}>
+                        <span style={{ color: '#8B2E1F', fontWeight: 600 }}>HIGH:</span>
+                        <span style={{ fontWeight: 700, color: '#B8442E' }}>{severityBreakdown.HIGH}</span>
+                      </div>
+                      <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: 'white', border: '1px solid #D8D0C0' }}>
+                        <span style={{ color: '#8A6D1F', fontWeight: 600 }}>MEDIUM:</span>
+                        <span style={{ fontWeight: 700, color: '#C99A2E' }}>{severityBreakdown.MEDIUM}</span>
+                      </div>
+                      <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: 'white', border: '1px solid #D8D0C0' }}>
+                        <span style={{ color: '#2F5A3E', fontWeight: 600 }}>LOW:</span>
+                        <span style={{ fontWeight: 700, color: '#4A7C59' }}>{severityBreakdown.LOW}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {recentFindings.length === 0 && (
+                  <div style={{ fontSize: 12.5, color: '#8B8378', textAlign: 'center', padding: '20px 0' }}>
+                    Waiting for findings...
+                  </div>
+                )}
+                {recentFindings.length > 0 && (
+                  <div>
+                    <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid #D8D0C0', fontSize: 11, color: '#8B8378' }}>
+                      <strong>{findingsCount}</strong> findings discovered across scanned pages
+                    </div>
+                    {recentFindings.map((f, i) => {
+                      const s = severityStyle[f.risk] || severityStyle.LOW;
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            padding: '12px',
+                            marginBottom: 10,
+                            background: s.bg,
+                            border: `1px solid ${s.border}`,
+                            animation: i === 0 ? 'pulse 1s ease-in-out' : 'none',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8.5, fontWeight: 700, padding: '2px 6px', background: 'white', color: s.text, border: `1px solid ${s.border}` }}>
+                              {f.risk}
+                            </span>
+                            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, fontWeight: 600, color: s.text }}>
+                              {f.findingsCount} finding{f.findingsCount !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9, color: s.text, wordBreak: 'break-all', lineHeight: 1.3 }}>
+                            {f.title}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div ref={findingsEndRef} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      <style>{`
+        @keyframes pulse {
+          0% { box-shadow: 0 0 0 0 rgba(201, 169, 97, 0.7); }
+          70% { box-shadow: 0 0 0 6px rgba(201, 169, 97, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(201, 169, 97, 0); }
+        }
+      `}</style>
 
       <div style={{ marginTop: 24, padding: '18px 24px', background: '#0B1929', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#8B9BAA', fontSize: 12.5 }}>
