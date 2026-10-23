@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Filter, Download, Hand, Bot } from 'lucide-react';
 import { api } from '../api/client';
+import FindingsView from '../components/FindingsView';
 
 export default function ReportDashboard({ scanId }) {
   const [scan, setScan] = useState(null);
@@ -70,7 +71,7 @@ export default function ReportDashboard({ scanId }) {
       </div>
 
       <div style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: '2px solid #0B1929' }}>
-        {['overview', 'pages'].map(t => (
+        {['overview', 'findings', 'pages'].map(t => (
           <button key={t} onClick={() => setTab(t)} style={{
             padding: '10px 20px', background: tab === t ? '#0B1929' : 'transparent',
             color: tab === t ? '#F5F1E8' : '#0B1929', border: 'none', cursor: 'pointer',
@@ -80,25 +81,47 @@ export default function ReportDashboard({ scanId }) {
       </div>
 
       {tab === 'overview' && (
-        <div style={{ background: 'white', border: '1px solid #D8D0C0' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #D8D0C0', background: '#EFE9DB' }}>
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, fontWeight: 500 }}>▸ MOST FREQUENT PATTERNS</span>
-          </div>
-          <div style={{ padding: 20 }}>
-            {topPatterns.length === 0 && <div style={{ color: '#8B8378', fontSize: 13 }}>No findings yet.</div>}
-            {topPatterns.map((p, i) => (
-              <div key={i} style={{ marginBottom: 14 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12.5 }}>
-                  <span style={{ fontWeight: 500 }}>{p.pattern_name}</span>
-                  <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: '#8B8378' }}>{p.page_count}</span>
-                </div>
-                <div style={{ height: 8, background: '#EFE9DB' }}>
-                  <div style={{ height: '100%', width: `${(p.page_count / maxFreq) * 100}%`, background: '#B8442E' }} />
-                </div>
+        <div>
+          {/* Dark Pattern Findings Summary */}
+          <div style={{ background: 'white', border: '1px solid #D8D0C0', marginBottom: 20, cursor: 'pointer' }} onClick={() => setTab('findings')}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid #D8D0C0', background: '#EFE9DB' }}>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, fontWeight: 500 }}>▸ DARK PATTERN FINDINGS SUMMARY</span>
+            </div>
+            <div style={{ padding: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#0B1929' }}>
+                {scan.findings_count} finding{scan.findings_count !== 1 ? 's' : ''}: {riskCounts.HIGH || 0} HIGH, {riskCounts.MEDIUM || 0} MEDIUM, {riskCounts.LOW || 0} LOW
               </div>
-            ))}
+              <div style={{ fontSize: 12, color: '#8B8378', marginTop: 8 }}>
+                Click to view all findings with search, filter, and sort options.
+              </div>
+            </div>
+          </div>
+
+          {/* Most Frequent Patterns */}
+          <div style={{ background: 'white', border: '1px solid #D8D0C0' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid #D8D0C0', background: '#EFE9DB' }}>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, fontWeight: 500 }}>▸ MOST FREQUENT PATTERNS</span>
+            </div>
+            <div style={{ padding: 20 }}>
+              {topPatterns.length === 0 && <div style={{ color: '#8B8378', fontSize: 13 }}>No findings yet.</div>}
+              {topPatterns.map((p, i) => (
+                <div key={i} style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12.5 }}>
+                    <span style={{ fontWeight: 500 }}>{p.pattern_name}</span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", color: '#8B8378' }}>{p.page_count}</span>
+                  </div>
+                  <div style={{ height: 8, background: '#EFE9DB' }}>
+                    <div style={{ height: '100%', width: `${(p.page_count / maxFreq) * 100}%`, background: '#B8442E' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
+      )}
+
+      {tab === 'findings' && (
+        <FindingsView findings={pages.flatMap(p => p.findings)} pages={pages} />
       )}
 
       {tab === 'pages' && (
