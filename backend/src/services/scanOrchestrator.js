@@ -16,7 +16,8 @@ function emit(io, scanId, event, payload) {
   if (io) io.to(scanId).emit(event, payload);
 }
 
-async function startScan(scanId, targetUrl, urlPattern, io) {
+async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
+  const { scanMode = 'one-page', selectedUrls = [] } = options;
   activeScans.set(scanId, { paused: false, cancelled: false });
 
   const updateScan = (fields) => {
@@ -34,18 +35,57 @@ async function startScan(scanId, targetUrl, urlPattern, io) {
       return;
     }
 
-    // ── Discover URLs ─────────────────────────────────────────────────────
-    emit(io, scanId, 'scan:log', { message: 'Discovering pages from sitemap...' });
-    const { urls: sitemapUrls, sitemapFound } = await discoverAllUrls(targetUrl, (msg) => emit(io, scanId, 'scan:log', { message: msg }));
-
-    let allUrls = sitemapUrls;
-    if (!sitemapFound || allUrls.length === 0) {
-      emit(io, scanId, 'scan:log', { message: 'No sitemap found — crawling to discover pages...' });
-      const crawler = new Crawler({ targetUrl, crawlDelayMs: 600, screenshotsDir: SCREENSHOTS_DIR });
-      allUrls = await crawler.discoverOnly((msg) => emit(io, scanId, 'scan:log', { message: msg }), 300);
+    // ── URL Selection by Mode ─────────────────────────────────────────────
+    let allUrls = [];
+    
+    if (scanMode === 'one-page') {
+      // One Page mode: scan only the target URL, no discovery
+      allUrls = [targetUrl];
+      emit(io, scanId, 'scan:log', { message: `One Page mode: scanning ${targetUrl}` });
+    } else if (scanMode === 'main-domain' && selectedUrls && selectedUrls.length > 0) {
+      // Main Domain mode: use pre-selected URLs from discovery
+      allUrls = selectedUrls;
+      emit(io, scanId, 'scan:log', { message: `Main Domain mode: scanning ${selectedUrls.length} selected page(s)` });
+    } else {
+      // Fallback: discover URLs (backward compatibility or main-domain without selections)
+      emit(io, scanId, 'scan:log', { message: 'Discovering pages from sitemap...' });
+      const { urls: sitemapUrls, sitemapFound, demoLabel } = await discoverAllUrls(targetUrl, (msg) => emit(io, scanId, 'scan:log', { message: msg }));
+      
+      // Emit demo label if present (provides user visibility)
+      if (demoLabel) {
+        emit(io, scanId, 'scan:log', { message: demoLabel });
+      }
+      
+      allUrls = sitemapUrls;
+      if (!sitemapFound || allUrls.length === 0) {
+        emit(io, scanId, 'scan:log', { message: 'No sitemap found — crawling to discover pages...' });
+        const crawler = new Crawler({ targetUrl, crawlDelayMs: 600, screenshotsDir: SCREENSHOTS_DIR });
+        allUrls = await crawler.discoverOnly((msg) => emit(io, scanId, 'scan:log', { message: msg }), 300);
+      }
     }
 
-    if (urlPattern) {
+    // ── Safety Guard: Block fixture URLs outside demo mode ────────────────
+    const FIXTURE_DOMAIN = 'demo.tata-aig.local';
+    const isDemoModeActive = process.env.DEMO_MODE === 'true';
+    if (!isDemoModeActive && scanMode !== 'one-page') {
+      const hasFixtureUrls = allUrls.some(url => {
+        try {
+          return new URL(url).hostname === FIXTURE_DOMAIN;
+        } catch {
+          return false;
+        }
+      });
+      if (hasFixtureUrls) {
+        updateScan({ status: 'error' });
+        emit(io, scanId, 'scan:error', { 
+          message: `The domain ${FIXTURE_DOMAIN} is reserved for demo purposes and cannot be scanned in production mode. To run a demo, set DEMO_MODE=true on the backend.` 
+        });
+        return;
+      }
+    }
+
+    // ── Apply URL Pattern Filter (if provided) ─────────────────────────────
+    if (urlPattern && scanMode !== 'one-page') {
       const re = new RegExp(urlPattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*'), 'i');
       allUrls = allUrls.filter(u => re.test(u));
     }

@@ -1,0 +1,864 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sbasadeesh/lucidflow/schema.json",
+  "title": "IRDAI Local Suite Dark Pattern Finder — Overall Application Schema",
+  "description": "Canonical data shapes for database, APIs, UI KPIs, live scan events, AI analysis, report/PDF, license, and system status. Derived from the running codebase.",
+  "type": "object",
+  "properties": {
+    "meta": { "$ref": "#/$defs/ApplicationMeta" },
+    "enums": { "$ref": "#/$defs/Enums" },
+    "database": { "$ref": "#/$defs/Database" },
+    "api": { "$ref": "#/$defs/Api" },
+    "realtime": { "$ref": "#/$defs/Realtime" },
+    "analysis": { "$ref": "#/$defs/Analysis" },
+    "ui": { "$ref": "#/$defs/Ui" },
+    "kpis": { "$ref": "#/$defs/Kpis" },
+    "report": { "$ref": "#/$defs/Report" },
+    "patterns": { "$ref": "#/$defs/PatternsCatalog" }
+  },
+  "required": ["meta", "enums", "database", "api", "ui", "kpis", "report"],
+
+  "$defs": {
+    "ApplicationMeta": {
+      "type": "object",
+      "properties": {
+        "product_name": { "const": "IRDAI Dark Pattern Compliance Scanner" },
+        "mode": { "const": "fully-local" },
+        "backend_default_port": { "const": 4500 },
+        "frontend_default_port": { "const": 5173 },
+        "ollama_default_port": { "const": 11434 },
+        "database_file": { "const": "backend/data/irdai.db" },
+        "screenshots_dir": { "const": "backend/screenshots" }
+      }
+    },
+
+    "Enums": {
+      "type": "object",
+      "properties": {
+        "ScanStatus": {
+          "type": "string",
+          "enum": ["discovering", "scanning", "paused", "complete", "error"]
+        },
+        "PageRisk": {
+          "type": "string",
+          "enum": ["PENDING", "HIGH", "MEDIUM", "LOW", "CLEAN", "ERROR", "UNKNOWN"]
+        },
+        "FindingSeverity": {
+          "type": "string",
+          "enum": ["HIGH", "MEDIUM", "LOW"]
+        },
+        "FindingSource": {
+          "type": "string",
+          "enum": ["ai", "manual"]
+        },
+        "ManualQueueStatus": {
+          "type": "string",
+          "enum": ["pending", "reviewed"]
+        },
+        "ManualReviewCode": {
+          "type": "string",
+          "enum": ["MULTI_STEP_FLOW", "LOGIN_GATED", "PAGE_TOO_TALL", "TRANSACTION_FLOW_URL"]
+        },
+        "UiView": {
+          "type": "string",
+          "enum": ["new-scan", "console", "report"]
+        },
+        "ReportTab": {
+          "type": "string",
+          "enum": ["overview", "pages"]
+        },
+        "SeverityFilter": {
+          "type": "string",
+          "enum": ["ALL", "HIGH", "MEDIUM", "LOW", "CLEAN", "ERROR"]
+        }
+      }
+    },
+
+    "Database": {
+      "type": "object",
+      "description": "SQLite tables (backend/src/db/database.js)",
+      "properties": {
+        "scans": { "$ref": "#/$defs/ScanRow" },
+        "pages": { "$ref": "#/$defs/PageRow" },
+        "findings": { "$ref": "#/$defs/FindingRow" },
+        "recommendations": { "$ref": "#/$defs/RecommendationRow" },
+        "manual_findings_queue": { "$ref": "#/$defs/ManualQueueRow" }
+      }
+    },
+
+    "ScanRow": {
+      "type": "object",
+      "required": ["id", "target_url", "status"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "target_url": { "type": "string", "format": "uri" },
+        "url_pattern": { "type": ["string", "null"] },
+        "status": { "$ref": "#/$defs/Enums/properties/ScanStatus" },
+        "total_pages": { "type": "integer", "minimum": 0 },
+        "scanned_pages": { "type": "integer", "minimum": 0 },
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" }
+      }
+    },
+
+    "PageRow": {
+      "type": "object",
+      "required": ["id", "scan_id", "url", "overall_risk"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "scan_id": { "type": "string", "format": "uuid" },
+        "url": { "type": "string", "format": "uri" },
+        "title": { "type": ["string", "null"] },
+        "screenshot_path": { "type": ["string", "null"] },
+        "overall_risk": { "$ref": "#/$defs/Enums/properties/PageRisk" },
+        "summary": { "type": ["string", "null"] },
+        "dom_signals": {
+          "description": "Stored as JSON text in SQLite; parsed in API responses",
+          "oneOf": [
+            { "type": "string" },
+            { "$ref": "#/$defs/DomSignals" },
+            { "type": "null" }
+          ]
+        },
+        "manual_review_required": { "type": "integer", "enum": [0, 1] },
+        "manual_review_reasons": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/ManualReviewReason" }
+            },
+            { "type": "null" }
+          ]
+        },
+        "analyzed_at": { "type": ["string", "null"] },
+        "error_message": { "type": ["string", "null"] }
+      }
+    },
+
+    "FindingRow": {
+      "type": "object",
+      "required": ["id", "page_id", "pattern_id", "pattern_name", "severity"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "page_id": { "type": "string", "format": "uuid" },
+        "pattern_id": { "type": "integer", "minimum": 0, "maximum": 13 },
+        "pattern_name": { "type": "string" },
+        "severity": { "$ref": "#/$defs/Enums/properties/FindingSeverity" },
+        "evidence": { "type": ["string", "null"] },
+        "location": { "type": ["string", "null"] },
+        "severity_rule_applied": { "type": ["string", "null"] },
+        "source": { "$ref": "#/$defs/Enums/properties/FindingSource" },
+        "reviewed_by": { "type": ["string", "null"] },
+        "reviewed_at": { "type": ["string", "null"] },
+        "created_at": { "type": "string" }
+      }
+    },
+
+    "RecommendationRow": {
+      "type": "object",
+      "required": ["id", "page_id", "text"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "page_id": { "type": "string", "format": "uuid" },
+        "text": { "type": "string" },
+        "sort_order": { "type": "integer" }
+      }
+    },
+
+    "ManualQueueRow": {
+      "type": "object",
+      "required": ["id", "scan_id", "page_url", "status"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "scan_id": { "type": "string", "format": "uuid" },
+        "page_url": { "type": "string" },
+        "page_title": { "type": ["string", "null"] },
+        "reasons": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        },
+        "status": { "$ref": "#/$defs/Enums/properties/ManualQueueStatus" },
+        "created_at": { "type": "string" }
+      }
+    },
+
+    "DomSignals": {
+      "type": "object",
+      "description": "Collected by crawler.visitPage (page.evaluate)",
+      "properties": {
+        "preChecked": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "name": { "type": "string" }
+            }
+          }
+        },
+        "timers": { "type": "integer", "minimum": 0 },
+        "popups": { "type": "integer", "minimum": 0 },
+        "forms": { "type": "integer", "minimum": 0 },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "priceEls": { "type": "array", "items": { "type": "string" } },
+        "buttons": { "type": "array", "items": { "type": "string" } },
+        "bodyText": { "type": "string" },
+        "hasMultiStepFlow": { "type": "boolean" },
+        "hasLoginGate": { "type": "boolean" },
+        "pageHeightPx": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "ManualReviewReason": {
+      "type": "object",
+      "properties": {
+        "code": { "$ref": "#/$defs/Enums/properties/ManualReviewCode" },
+        "detail": { "type": "string" }
+      },
+      "required": ["code", "detail"]
+    },
+
+    "Api": {
+      "type": "object",
+      "description": "HTTP JSON contracts under /api",
+      "properties": {
+        "health": {
+          "type": "object",
+          "properties": {
+            "method": { "const": "GET" },
+            "path": { "const": "/api/health" },
+            "response": {
+              "type": "object",
+              "properties": {
+                "status": { "const": "ok" },
+                "mode": { "const": "fully-local" }
+              }
+            }
+          }
+        },
+        "system_status": {
+          "type": "object",
+          "properties": {
+            "method": { "const": "GET" },
+            "path": { "const": "/api/system/status" },
+            "response": { "$ref": "#/$defs/SystemStatus" }
+          }
+        },
+        "license": {
+          "type": "object",
+          "properties": {
+            "get": { "$ref": "#/$defs/LicenseState" },
+            "post_body": {
+              "type": "object",
+              "required": ["key"],
+              "properties": { "key": { "type": "string" } }
+            }
+          }
+        },
+        "create_scan": {
+          "type": "object",
+          "properties": {
+            "method": { "const": "POST" },
+            "path": { "const": "/api/scans" },
+            "request": {
+              "type": "object",
+              "required": ["target_url"],
+              "properties": {
+                "target_url": { "type": "string", "format": "uri" },
+                "url_pattern": { "type": ["string", "null"] }
+              }
+            },
+            "response": {
+              "type": "object",
+              "required": ["id", "target_url", "status"],
+              "properties": {
+                "id": { "type": "string", "format": "uuid" },
+                "target_url": { "type": "string" },
+                "status": { "const": "discovering" }
+              }
+            }
+          }
+        },
+        "scan_detail": {
+          "description": "GET /api/scans/:id — used by Console + Report KPIs",
+          "type": "object",
+          "properties": {
+            "response": { "$ref": "#/$defs/ScanDetailResponse" }
+          }
+        },
+        "pages_list": {
+          "description": "GET /api/scans/:id/pages?severity=",
+          "type": "object",
+          "properties": {
+            "response": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/PageDetailResponse" }
+            }
+          }
+        },
+        "manual_finding": {
+          "type": "object",
+          "properties": {
+            "method": { "const": "POST" },
+            "path": { "const": "/api/scans/:id/manual-findings" },
+            "request": {
+              "type": "object",
+              "required": ["page_url", "pattern_name", "severity", "evidence"],
+              "properties": {
+                "page_url": { "type": "string" },
+                "page_title": { "type": "string" },
+                "pattern_id": { "type": "integer" },
+                "pattern_name": { "type": "string" },
+                "severity": { "$ref": "#/$defs/Enums/properties/FindingSeverity" },
+                "evidence": { "type": "string" },
+                "location": { "type": "string" },
+                "reviewed_by": { "type": "string" },
+                "recommendations": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "pdf_report": {
+          "type": "object",
+          "properties": {
+            "method": { "const": "GET" },
+            "path": { "const": "/api/report/:scanId" },
+            "response_content_type": { "const": "application/pdf" }
+          }
+        }
+      }
+    },
+
+    "SystemStatus": {
+      "type": "object",
+      "required": ["backend", "ollama_host", "model", "ollama_available"],
+      "properties": {
+        "backend": { "type": "string", "enum": ["ok", "unreachable"] },
+        "ollama_host": { "type": "string" },
+        "model": { "type": "string" },
+        "ollama_available": { "type": "boolean" },
+        "ollama_message": { "type": "string" }
+      }
+    },
+
+    "LicenseState": {
+      "type": "object",
+      "properties": {
+        "licensed": { "type": "boolean" },
+        "trial": { "type": "boolean" },
+        "max_pages": {
+          "type": "integer",
+          "description": "-1 means unlimited when licensed; trial default is 3"
+        },
+        "licensee": { "type": "string" },
+        "expires": { "type": "string" },
+        "key_id": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+
+    "ScanDetailResponse": {
+      "allOf": [
+        { "$ref": "#/$defs/ScanRow" },
+        {
+          "type": "object",
+          "properties": {
+            "is_active": { "type": "boolean" },
+            "risk_counts": {
+              "type": "object",
+              "additionalProperties": { "type": "integer" },
+              "description": "Map of PageRisk -> page count, e.g. { HIGH: 2, CLEAN: 1 }"
+            },
+            "findings_count": { "type": "integer", "minimum": 0 },
+            "top_patterns": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["pattern_name", "page_count"],
+                "properties": {
+                  "pattern_name": { "type": "string" },
+                  "page_count": { "type": "integer", "minimum": 0 }
+                }
+              }
+            },
+            "manual_review_count": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+
+    "PageDetailResponse": {
+      "allOf": [
+        { "$ref": "#/$defs/PageRow" },
+        {
+          "type": "object",
+          "properties": {
+            "dom_signals": {
+              "oneOf": [{ "$ref": "#/$defs/DomSignals" }, { "type": "null" }]
+            },
+            "manual_review_reasons": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/ManualReviewReason" }
+            },
+            "findings": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/FindingRow" }
+            },
+            "recommendations": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+
+    "Realtime": {
+      "type": "object",
+      "description": "Socket.IO events (room = scanId)",
+      "properties": {
+        "client_to_server": {
+          "type": "object",
+          "properties": {
+            "subscribe": { "type": "string", "description": "scanId" },
+            "unsubscribe": { "type": "string", "description": "scanId" }
+          }
+        },
+        "server_to_client": {
+          "type": "object",
+          "properties": {
+            "scan:log": {
+              "type": "object",
+              "properties": { "message": { "type": "string" } }
+            },
+            "scan:discovered": {
+              "type": "object",
+              "properties": { "totalPages": { "type": "integer" } }
+            },
+            "scan:license-limited": {
+              "type": "object",
+              "properties": {
+                "trial": { "type": "boolean" },
+                "limit": { "type": "integer" },
+                "discovered": { "type": "integer" }
+              }
+            },
+            "scan:page-done": {
+              "type": "object",
+              "properties": {
+                "url": { "type": "string" },
+                "title": { "type": "string" },
+                "risk": { "$ref": "#/$defs/Enums/properties/PageRisk" },
+                "findingsCount": { "type": "integer" },
+                "scannedCount": { "type": "integer" },
+                "totalPages": { "type": "integer" }
+              }
+            },
+            "scan:complete": { "type": "object" },
+            "scan:paused": { "type": "object" },
+            "scan:error": {
+              "type": "object",
+              "properties": { "message": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+
+    "Analysis": {
+      "type": "object",
+      "description": "AI output shape from vision.analyzePage / Ollama JSON",
+      "properties": {
+        "model_json": {
+          "type": "object",
+          "required": ["overall_risk", "summary", "patterns_found"],
+          "properties": {
+            "overall_risk": {
+              "type": "string",
+              "enum": ["HIGH", "MEDIUM", "LOW", "CLEAN", "UNKNOWN", "ERROR"]
+            },
+            "summary": { "type": "string" },
+            "patterns_found": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["pattern_id", "pattern_name", "severity", "evidence"],
+                "properties": {
+                  "pattern_id": { "type": "integer" },
+                  "pattern_name": { "type": "string" },
+                  "severity": { "$ref": "#/$defs/Enums/properties/FindingSeverity" },
+                  "evidence": { "type": "string" },
+                  "location": { "type": "string" }
+                }
+              }
+            },
+            "clean_patterns": {
+              "type": "array",
+              "items": { "type": "integer" }
+            },
+            "recommendations": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "finalized_page_analysis": {
+          "type": "object",
+          "properties": {
+            "page_url": { "type": "string" },
+            "page_title": { "type": "string" },
+            "overall_risk": { "$ref": "#/$defs/Enums/properties/PageRisk" },
+            "summary": { "type": "string" },
+            "patterns_found": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/FindingRow" }
+            },
+            "clean_patterns": {
+              "type": "array",
+              "items": { "type": "integer" }
+            },
+            "recommendations": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "Ui": {
+      "type": "object",
+      "description": "Frontend view models",
+      "properties": {
+        "app_shell": {
+          "type": "object",
+          "properties": {
+            "view": { "$ref": "#/$defs/Enums/properties/UiView" },
+            "activeScanId": { "type": ["string", "null"] },
+            "systemStatus": { "$ref": "#/$defs/SystemStatus" }
+          }
+        },
+        "new_scan_form": {
+          "type": "object",
+          "properties": {
+            "targetUrl": { "type": "string" },
+            "urlPattern": { "type": "string" },
+            "license": { "$ref": "#/$defs/LicenseState" }
+          }
+        },
+        "scan_console": {
+          "type": "object",
+          "properties": {
+            "scan": { "$ref": "#/$defs/ScanDetailResponse" },
+            "logs": { "type": "array", "items": { "type": "string" } },
+            "recentPages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string" },
+                  "title": { "type": "string" },
+                  "risk": { "type": "string" },
+                  "findingsCount": { "type": "integer" }
+                }
+              }
+            },
+            "manualCount": { "type": "integer" },
+            "licenseLimited": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "properties": {
+                    "trial": { "type": "boolean" },
+                    "limit": { "type": "integer" },
+                    "discovered": { "type": "integer" }
+                  }
+                }
+              ]
+            },
+            "progress_percent": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "round(scanned_pages / total_pages * 100)"
+            }
+          }
+        },
+        "report_dashboard": {
+          "type": "object",
+          "properties": {
+            "scan": { "$ref": "#/$defs/ScanDetailResponse" },
+            "pages": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/PageDetailResponse" }
+            },
+            "tab": { "$ref": "#/$defs/Enums/properties/ReportTab" },
+            "filterSeverity": { "$ref": "#/$defs/Enums/properties/SeverityFilter" },
+            "expandedPage": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+
+    "Kpis": {
+      "type": "object",
+      "description": "Key performance / compliance indicators shown in UI and PDF",
+      "properties": {
+        "scan_progress": {
+          "type": "object",
+          "properties": {
+            "total_pages": { "type": "integer" },
+            "scanned_pages": { "type": "integer" },
+            "progress_percent": { "type": "integer" },
+            "status": { "$ref": "#/$defs/Enums/properties/ScanStatus" }
+          }
+        },
+        "risk_distribution": {
+          "type": "object",
+          "description": "From scan.risk_counts — pages per risk bucket",
+          "properties": {
+            "HIGH": { "type": "integer" },
+            "MEDIUM": { "type": "integer" },
+            "LOW": { "type": "integer" },
+            "CLEAN": { "type": "integer" },
+            "ERROR": { "type": "integer" },
+            "PENDING": { "type": "integer" }
+          }
+        },
+        "report_stat_strip": {
+          "type": "object",
+          "description": "Six tiles on ReportDashboard",
+          "required": [
+            "pages_scanned",
+            "total_findings",
+            "high",
+            "medium",
+            "low",
+            "manual"
+          ],
+          "properties": {
+            "pages_scanned": {
+              "type": "integer",
+              "description": "scan.scanned_pages"
+            },
+            "total_findings": {
+              "type": "integer",
+              "description": "scan.findings_count"
+            },
+            "high": {
+              "type": "integer",
+              "description": "risk_counts.HIGH"
+            },
+            "medium": {
+              "type": "integer",
+              "description": "risk_counts.MEDIUM"
+            },
+            "low": {
+              "type": "integer",
+              "description": "risk_counts.LOW"
+            },
+            "manual": {
+              "type": "integer",
+              "description": "scan.manual_review_count"
+            }
+          }
+        },
+        "console_stat_grid": {
+          "type": "object",
+          "description": "Live console summary tiles",
+          "properties": {
+            "total_pages": { "type": "integer" },
+            "scanned_pages": { "type": "integer" },
+            "high": { "type": "integer" },
+            "medium": { "type": "integer" },
+            "low": { "type": "integer" },
+            "manual_pending": { "type": "integer" }
+          }
+        },
+        "pattern_frequency": {
+          "type": "array",
+          "description": "Most frequent patterns across pages (top_patterns)",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pattern_name": { "type": "string" },
+              "page_count": { "type": "integer" },
+              "relative_bar": {
+                "type": "number",
+                "description": "page_count / max(page_count) for UI bar width"
+              }
+            }
+          }
+        },
+        "coverage_trust": {
+          "type": "object",
+          "description": "How to read scan completeness",
+          "properties": {
+            "discovered_total": { "type": "integer" },
+            "selected_for_scan": { "type": "integer" },
+            "completed_ok": { "type": "integer" },
+            "errors": { "type": "integer" },
+            "pending": { "type": "integer" },
+            "license_capped": { "type": "boolean" },
+            "license_limit": { "type": ["integer", "null"] }
+          }
+        }
+      }
+    },
+
+    "Report": {
+      "type": "object",
+      "description": "PDF report conceptual schema (routes/report.js) + UI report mirror",
+      "properties": {
+        "identity": {
+          "type": "object",
+          "properties": {
+            "title": { "const": "IRDAI Dark Pattern Compliance Report" },
+            "target_url": { "type": "string" },
+            "scan_id": { "type": "string" },
+            "generated_at": { "type": "string" }
+          }
+        },
+        "cover_stats": {
+          "type": "object",
+          "properties": {
+            "total_pages": { "type": "integer" },
+            "scanned_pages": { "type": "integer" },
+            "findings_count": { "type": "integer" },
+            "risk_counts": { "$ref": "#/$defs/Kpis/properties/risk_distribution" },
+            "top_patterns": { "$ref": "#/$defs/Kpis/properties/pattern_frequency" }
+          }
+        },
+        "page_sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string" },
+              "title": { "type": "string" },
+              "overall_risk": { "$ref": "#/$defs/Enums/properties/PageRisk" },
+              "summary": { "type": "string" },
+              "screenshot_path": { "type": ["string", "null"] },
+              "findings": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/FindingRow" }
+              },
+              "recommendations": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        },
+        "high_severity_appendix": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FindingRow" }
+        },
+        "corrective_action_plan": {
+          "type": "object",
+          "description": "Template table in PDF for remediation tracking",
+          "properties": {
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "finding": { "type": "string" },
+                  "severity": { "type": "string" },
+                  "owner": { "type": "string" },
+                  "due_date": { "type": "string" },
+                  "status": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "export": {
+          "type": "object",
+          "properties": {
+            "endpoint": { "const": "GET /api/report/:scanId" },
+            "filename_pattern": { "const": "irdai-scan-{scanId8}.pdf" },
+            "content_type": { "const": "application/pdf" }
+          }
+        }
+      }
+    },
+
+    "PatternsCatalog": {
+      "type": "object",
+      "description": "Reference list from severity.js (IDs 1–13)",
+      "properties": {
+        "patterns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+              "id": { "type": "integer" },
+              "name": { "type": "string" }
+            }
+          },
+          "default": [
+            { "id": 1, "name": "False Urgency" },
+            { "id": 2, "name": "Basket Sneaking" },
+            { "id": 3, "name": "Confirm Shaming" },
+            { "id": 4, "name": "Forced Action" },
+            { "id": 5, "name": "Subscription Trap" },
+            { "id": 6, "name": "Bait & Switch" },
+            { "id": 7, "name": "Drip Pricing" },
+            { "id": 8, "name": "Disguised Ads" },
+            { "id": 9, "name": "Trick Questions" },
+            { "id": 10, "name": "SaaS Billing" },
+            { "id": 11, "name": "Rogue Malwares" },
+            { "id": 12, "name": "Nagging" },
+            { "id": 13, "name": "Interface Interference" }
+          ]
+        }
+      }
+    }
+  },
+
+  "examples": [
+    {
+      "kpis": {
+        "report_stat_strip": {
+          "pages_scanned": 3,
+          "total_findings": 7,
+          "high": 1,
+          "medium": 1,
+          "low": 1,
+          "manual": 1
+        },
+        "pattern_frequency": [
+          { "pattern_name": "Basket Sneaking", "page_count": 2 },
+          { "pattern_name": "Drip Pricing", "page_count": 1 }
+        ]
+      },
+      "api": {
+        "scan_detail": {
+          "response": {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "target_url": "https://example-insurer.com",
+            "status": "complete",
+            "total_pages": 3,
+            "scanned_pages": 3,
+            "is_active": false,
+            "risk_counts": { "HIGH": 1, "MEDIUM": 1, "CLEAN": 1 },
+            "findings_count": 7,
+            "top_patterns": [
+              { "pattern_name": "Basket Sneaking", "page_count": 2 }
+            ],
+            "manual_review_count": 1
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "demo.tata-aig.local": {
+    "urls": [
+      "https://demo.tata-aig.local/",
+      "https://demo.tata-aig.local/car-insurance",
+      "https://demo.tata-aig.local/car-insurance/quote",
+      "https://demo.tata-aig.local/checkout",
+      "https://demo.tata-aig.local/claims",
+      "https://demo.tata-aig.local/faq",
+      "https://demo.tata-aig.local/about"
+    ],
+    "sitemapFound": true,
+    "label": "Demo data — live domain discovery is not active in this demo"
+  }
+}

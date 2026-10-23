@@ -20,6 +20,7 @@ db.exec(`
     id            TEXT PRIMARY KEY,
     target_url    TEXT NOT NULL,
     url_pattern   TEXT,
+    scan_mode     TEXT DEFAULT 'one-page',     -- one-page | main-domain
     status        TEXT DEFAULT 'discovering',  -- discovering | scanning | paused | complete | error
     total_pages   INTEGER DEFAULT 0,
     scanned_pages INTEGER DEFAULT 0,

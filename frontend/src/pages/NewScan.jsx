@@ -1,23 +1,115 @@
-import { useState } from 'react';
-import { Play, AlertTriangle } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import LicensePanel from '../components/LicensePanel';
+import DiscoveryPreview from '../components/DiscoveryPreview';
 
-export default function NewScan({ onScanCreated, systemStatus }) {
-  const [targetUrl, setTargetUrl] = useState('https://www.royalsundaram.in');
-  const [urlPattern, setUrlPattern] = useState('');
+export default function NewScan({ onScanCreated }) {
+  const [scanMode, setScanMode] = useState('one-page');
+  const [text, setText] = useState({ 'one-page': '', 'main-domain': '' });
   const [starting, setStarting] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
   const [error, setError] = useState('');
   const [license, setLicense] = useState(null);
+  const [discoveredUrls, setDiscoveredUrls] = useState([]);
+  const [selectedUrls, setSelectedUrls] = useState([]);
+  const [demoLabel, setDemoLabel] = useState(null);
+  const [items, setItems] = useState([]);
 
-  const isReady = systemStatus?.backend === 'ok' && systemStatus?.ollama_available;
+  const maxSelectable = license?.max_pages || 3;
+  const currentText = text[scanMode];
+  const modeConfig = {
+    'one-page': {
+      label: 'Page URLs',
+      inputLabel: 'Page URLs',
+      placeholder: 'https://www.example.com/page1\nhttps://www.example.com/page2',
+      multiline: true,
+      help: 'Add one or more page URLs, separated by commas or new lines.',
+    },
+    'main-domain': {
+      label: 'Whole domain',
+      inputLabel: 'Domain',
+      placeholder: 'https://www.example.com',
+      multiline: false,
+      help: 'Enter only the domain to discover and scan all public pages.',
+    },
+  };
+
+  const current = modeConfig[scanMode];
+
+  useEffect(() => {
+    const fetchLicense = async () => {
+      try {
+        const licenseData = await api.getLicense();
+        setLicense(licenseData);
+      } catch (err) {
+        console.error('Failed to fetch license:', err);
+      }
+    };
+    fetchLicense();
+  }, []);
+
+  // Parse URLs from text input
+  useEffect(() => {
+    if (!currentText.trim()) {
+      setItems([]);
+      return;
+    }
+    const urls = currentText
+      .split(/[,\n]+/)
+      .map(u => u.trim())
+      .filter(u => u.length > 0);
+    setItems(urls);
+  }, [currentText, scanMode]);
+
+  const handleSetText = (value) => {
+    setText({ ...text, [scanMode]: value });
+  };
+
+  const handleRemoveItem = (raw) => {
+    const newUrls = items.filter(u => u !== raw).join(scanMode === 'one-page' ? '\n' : '');
+    handleSetText(newUrls);
+  };
+
+  const handleDiscover = async () => {
+    setError('');
+    setDiscovering(true);
+    try {
+      const result = await api.discoverUrls(items[0]);
+      setDiscoveredUrls(result.urls || []);
+      setSelectedUrls([]);
+      setDemoLabel(result.demoLabel || null);
+      if (!result.urls || result.urls.length === 0) {
+        setError('No pages discovered. Please check the domain and try again.');
+      }
+    } catch (err) {
+      setError(err.message);
+      setDiscoveredUrls([]);
+    } finally {
+      setDiscovering(false);
+    }
+  };
 
   const handleStart = async () => {
     setError('');
     setStarting(true);
     try {
-      const scan = await api.createScan(targetUrl, urlPattern || null);
-      onScanCreated(scan.id);
+      if (scanMode === 'one-page') {
+        if (items.length === 0) {
+          setError('Please add at least one page URL');
+          setStarting(false);
+          return;
+        }
+        const scan = await api.createScan(items[0], null, 'one-page', []);
+        onScanCreated(scan.id);
+      } else {
+        if (selectedUrls.length === 0) {
+          setError('Please select at least one page to scan');
+          setStarting(false);
+          return;
+        }
+        const scan = await api.createScan(items[0], null, 'main-domain', selectedUrls);
+        onScanCreated(scan.id);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -25,90 +117,147 @@ export default function NewScan({ onScanCreated, systemStatus }) {
     }
   };
 
+  const canRun =
+    scanMode === 'one-page'
+      ? items.length > 0
+      : items.length > 0 && discoveredUrls.length > 0 && selectedUrls.length > 0;
+
   return (
-    <div style={{ maxWidth: 640, margin: '60px auto' }}>
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 26, fontWeight: 700, marginBottom: 8 }}>
-          Start a New Compliance Scan
-        </div>
-        <div style={{ fontSize: 13, color: '#5C7285' }}>
-          Runs entirely on this machine — no data leaves your network.
-        </div>
-      </div>
-
-      {!isReady && systemStatus && (
-        <div style={{
-          background: '#FBF3DC', border: '1px solid #C99A2E', padding: '14px 18px',
-          display: 'flex', gap: 12, marginBottom: 20, alignItems: 'flex-start',
-        }}>
-          <AlertTriangle size={18} color="#8A6D1F" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div>
-            <div style={{ fontWeight: 600, fontSize: 13, color: '#8A6D1F', marginBottom: 4 }}>
-              Local AI model not ready
-            </div>
-            <div style={{ fontSize: 12.5, color: '#78350F', lineHeight: 1.5 }}>
-              {systemStatus.backend !== 'ok'
-                ? 'Backend server is not reachable. Make sure you ran "npm start" in the backend folder.'
-                : systemStatus.ollama_message}
-            </div>
-          </div>
-        </div>
-      )}
-
+    <div
+      className="content narrow"
+      style={{
+        maxWidth: '760px',
+        width: '100%',
+        margin: '0 auto',
+      }}
+    >
       <LicensePanel onLicenseChange={setLicense} />
 
-      <div style={{ background: 'white', border: '1px solid #D8D0C0', padding: 28 }}>
+      {/* MAIN FORM CARD */}
+      <div className="card" style={{ marginBottom: 'var(--spacing-lg, 24px)' }}>
         {error && (
-          <div style={{ background: '#F8E8E4', border: '1px solid #B8442E', color: '#8B2E1F', padding: '10px 14px', fontSize: 12.5, marginBottom: 16 }}>
+          <div
+            className="error"
+            style={{
+              background: 'var(--surface3)',
+              border: '1px solid var(--secondary)',
+              color: 'var(--secondary)',
+              padding: 'var(--spacing-xs, 10px) var(--spacing-sm, 12px)',
+              fontSize: 'var(--fs-s)',
+              marginBottom: 'var(--spacing-sm, 12px)',
+              borderRadius: '3px',
+            }}
+          >
             {error}
           </div>
         )}
 
-        <label style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: '#8B8378', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
-          TARGET URL
-        </label>
-        <input
-          value={targetUrl}
-          onChange={e => setTargetUrl(e.target.value)}
-          placeholder="https://www.example.com"
-          style={{
-            width: '100%', padding: '11px 14px', border: '1px solid #D8D0C0',
-            fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, marginBottom: 18, boxSizing: 'border-box',
-          }}
-        />
+        {/* MODE SELECTOR TABS */}
+        <div className="tabs" style={{ marginBottom: 'var(--spacing-lg, 24px)' }}>
+          {Object.entries(modeConfig).map(([key, mode]) => (
+            <button
+              key={key}
+              className={scanMode === key ? 'on' : ''}
+              onClick={() => {
+                setScanMode(key);
+                setDiscoveredUrls([]);
+                setSelectedUrls([]);
+              }}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
 
-        <label style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: '#8B8378', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
-          URL PATTERN (OPTIONAL — LEAVE BLANK FOR FULL SITE)
-        </label>
-        <input
-          value={urlPattern}
-          onChange={e => setUrlPattern(e.target.value)}
-          placeholder="example.com/car-insurance/*"
-          style={{
-            width: '100%', padding: '11px 14px', border: '1px solid #D8D0C0',
-            fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, marginBottom: 24, boxSizing: 'border-box',
-          }}
-        />
+        {/* INPUT FIELD */}
+        <label className="label">{current.inputLabel}</label>
+        {current.multiline ? (
+          <textarea
+            value={currentText}
+            onChange={(e) => handleSetText(e.target.value)}
+            placeholder={current.placeholder}
+            rows={5}
+          />
+        ) : (
+          <input
+            value={currentText}
+            onChange={(e) => handleSetText(e.target.value)}
+            placeholder={current.placeholder}
+          />
+        )}
+        <p className="muted">{current.help}</p>
 
+        {/* CHIPS */}
+        {items.length > 0 && (
+          <div className="chips">
+            {items.map((item) => (
+              <span key={item} className="chip">
+                {item}
+                <button onClick={() => handleRemoveItem(item)}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* DISCOVERY & RUN BUTTON */}
+        {scanMode === 'main-domain' && items.length > 0 && discoveredUrls.length === 0 && !discovering && (
+          <button
+            className="btn primary"
+            onClick={handleDiscover}
+            disabled={discovering}
+            style={{ marginBottom: 'var(--spacing-lg, 24px)' }}
+          >
+            {discovering ? 'Discovering...' : 'Discover URLs'}
+          </button>
+        )}
+
+        {discovering && (
+          <p className="muted" style={{ marginBottom: 'var(--spacing-lg, 24px)' }}>
+            Discovering pages...
+          </p>
+        )}
+
+        {discoveredUrls.length > 0 && (
+          <DiscoveryPreview
+            urls={discoveredUrls}
+            maxSelectable={maxSelectable}
+            demoLabel={demoLabel}
+            onSelectionChange={setSelectedUrls}
+          />
+        )}
+
+        {/* RUN BUTTON */}
         <button
+          className="btn primary"
+          disabled={!canRun || starting}
           onClick={handleStart}
-          disabled={starting || !targetUrl}
-          style={{
-            width: '100%', padding: '14px', background: '#0B1929', color: '#F5F1E8',
-            border: 'none', cursor: starting ? 'default' : 'pointer', fontFamily: "'IBM Plex Sans', sans-serif",
-            fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            opacity: starting ? 0.6 : 1,
-          }}
         >
-          <Play size={16} /> {starting ? 'Starting...' : (license && !license.licensed ? 'Start Trial Scan (3 pages)' : 'Start Scan')}
+          {starting ? 'Starting...' : 'Run scan'}
         </button>
       </div>
 
-      <div style={{ marginTop: 20, fontSize: 11.5, color: '#8B8378', textAlign: 'center', lineHeight: 1.6 }}>
-        Scans run in your local browser session via Playwright + a locally-hosted<br />
-        Gemma 3 vision model through Ollama. No screenshots or page content are sent<br />
-        to any external server.
-      </div>
+      {/* RECENT SCANS SECTION */}
+      <h3 className="section">Recent scans</h3>
+      <table className="list">
+        <tbody>
+          {[
+            { domain: 'www.abcinsurance.example', date: '16 Oct 2026', status: 'Completed', result: '10 potential dark patterns' },
+            { domain: 'www.allianceinsurance.example', date: '15 Oct 2026', status: 'Completed', result: '3 potential dark patterns' },
+            { domain: 'www.orbitcover.example', date: '10 Oct 2026', status: 'Completed', result: '2 potential dark patterns' },
+          ].map((scan) => (
+            <tr key={scan.domain}>
+              <td>
+                <b>{scan.domain}</b>
+              </td>
+              <td>{scan.date}</td>
+              <td>
+                <b>{scan.status}</b>
+              </td>
+              <td>{scan.result}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

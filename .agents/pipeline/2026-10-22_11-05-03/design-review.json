@@ -1,0 +1,118 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "summary": "Design is well-structured but assumes unimplemented changes. 3 HIGH findings require fixes before proceeding: demo URL safety guard in orchestrator, API client and route extensions for mode parameters, and orchestrator options parameter for mode branching.",
+  "total_findings": 10,
+  "high_count": 3,
+  "medium_count": 4,
+  "nit_count": 3,
+  "findings": [
+    {
+      "id": 1,
+      "severity": "HIGH",
+      "title": "Missing demo URL safety guard in orchestrator — fixture URLs not blocked when demo mode is OFF",
+      "location": "backend/src/services/scanOrchestrator.js",
+      "problem": "Design claims safety check prevents demo.tata-aig.local URLs from reaching live Playwright when DEMO_MODE is not 'true', but this code does not exist. Current startScan() has no URL validation.",
+      "impact": "Fixture URLs could accidentally be sent to live scan engine, violating safety boundary requirement 9.1",
+      "fix": "Add URL validation after license enforcement: check if scanMode !== 'main-domain' with demo URLs and reject scan with error message 'Fixture URLs detected outside demo mode — scan blocked for safety.'"
+    },
+    {
+      "id": 2,
+      "severity": "HIGH",
+      "title": "API client createScan method signature is incomplete — missing scan_mode and selected_urls parameters",
+      "location": "frontend/src/api/client.js line 17",
+      "problem": "Current signature: createScan(targetUrl, urlPattern). Design requires: createScan(targetUrl, urlPattern, scanMode = 'one-page', selectedUrls = []). Method must also send these as JSON fields.",
+      "impact": "Frontend cannot pass mode and selected URLs to backend. Requirements 2.4 and 3.6 fail.",
+      "fix": "Update createScan method signature to accept scanMode and selectedUrls parameters; include them in the POST body. Also add new discoverUrls(baseUrl) method that POSTs to /scans/discover with base_url field."
+    },
+    {
+      "id": 3,
+      "severity": "HIGH",
+      "title": "Backend POST /api/scans route does not accept or store scan_mode and selected_urls",
+      "location": "backend/src/routes/scans.js lines 10-23",
+      "problem": "Route destructures only target_url and url_pattern. Design requires route to accept scan_mode and selected_urls, validate them, store scan_mode in database, and pass selectedUrls to startScan() via options.",
+      "impact": "Backend receives no mode information. Mode branching cannot be triggered. Requirements 7.1, 7.2, 8.1 fail.",
+      "fix": "Update POST / route to destructure scan_mode (default 'one-page') and selected_urls (default []); validate scan_mode is 'one-page' or 'main-domain'; validate selected_urls is array; include scan_mode in INSERT statement; pass both as options to startScan()."
+    },
+    {
+      "id": 4,
+      "severity": "MEDIUM",
+      "title": "Database schema is missing scan_mode column — existing query patterns will fail",
+      "location": "backend/src/db/database.js lines 11-29 CREATE TABLE",
+      "problem": "Design specifies ALTER TABLE scans ADD COLUMN scan_mode TEXT DEFAULT 'one-page' but column does not exist. New routes that reference scan_mode will fail with 'no such column' error.",
+      "impact": "Database INSERT/SELECT operations fail when new code is deployed. No scans can be created.",
+      "fix": "Add 'scan_mode TEXT DEFAULT \\'one-page\\',' to the scans table CREATE TABLE definition after url_pattern column."
+    },
+    {
+      "id": 5,
+      "severity": "MEDIUM",
+      "title": "scanOrchestrator.startScan signature does not accept options parameter — mode branching cannot happen",
+      "location": "backend/src/services/scanOrchestrator.js line 18",
+      "problem": "Current signature: startScan(scanId, targetUrl, urlPattern, io). Design requires: startScan(scanId, targetUrl, urlPattern, io, options = {}). Options object carries scanMode and selectedUrls needed for mode branching.",
+      "impact": "Orchestrator cannot receive mode information. Mode branching logic cannot be implemented. Requirements 8.1-8.6 fail.",
+      "fix": "Update function signature to accept options = {} parameter. Destructure { scanMode = 'one-page', selectedUrls = [] } at start. Replace discovery block with conditional: if 'one-page' use [targetUrl]; if 'main-domain' use selectedUrls; else discover (backward compat). Apply URL pattern only if not 'one-page'."
+    },
+    {
+      "id": 6,
+      "severity": "MEDIUM",
+      "title": "POST /api/scans/discover endpoint does not exist",
+      "location": "backend/src/routes/scans.js (no discover endpoint)",
+      "problem": "Design specifies new endpoint that accepts base_url and returns { urls, sitemapFound, demoLabel }. Endpoint is not implemented.",
+      "impact": "Frontend api.discoverUrls() calls fail. Main Domain discovery step cannot work. Requirements 3.3, 3.4, 9 of acceptance criteria fail.",
+      "fix": "Add POST /discover route to scans.js (or new discover.js): extract base_url from request; validate it's a valid URL; call discoverAllUrls(base_url); return { urls, sitemapFound, demoLabel: result.demoLabel || null }."
+    },
+    {
+      "id": 7,
+      "severity": "MEDIUM",
+      "title": "startScan callers do not pass options parameter — backward compat works but mode feature is inactive",
+      "location": "backend/src/routes/scans.js lines 20 and 101",
+      "problem": "Even after startScan signature accepts options, existing call sites must be updated. POST / (line 20) and restart endpoint (line 101) do not pass options, so mode information is lost.",
+      "impact": "Mode data stored in database is not used. Scans always fall back to discovery behavior.",
+      "fix": "In POST / route: pass { scanMode: scan_mode, selectedUrls: selected_urls } to startScan(). In restart endpoint: read scan_mode from database (COALESCE(scan_mode, 'one-page')); pass { scanMode: scan_mode || 'one-page', selectedUrls: [] } to startScan()."
+    },
+    {
+      "id": 8,
+      "severity": "NIT",
+      "title": "Demo fixture file path uses fragile relative path construction",
+      "location": "backend/src/services/sitemap.js line 48",
+      "problem": "Uses path.join(__dirname, '..', '..', 'data', 'demo-fixtures.json') which works but is relative and fragile if module structure changes.",
+      "impact": "Minor code clarity; no functional impact.",
+      "fix": "Use path.resolve(__dirname, '../../data/demo-fixtures.json') or compute DATA_DIR once and reuse it."
+    },
+    {
+      "id": 9,
+      "severity": "NIT",
+      "title": "Design does not specify URL validation rules for DiscoveryPreview component",
+      "location": "Design section Component Specifications → DiscoveryPreview.jsx",
+      "problem": "Spec does not clarify whether empty strings, relative URLs, fragments, or malformed URLs are allowed in the urls prop.",
+      "impact": "Implementation detail; could lead to ambiguous component behavior.",
+      "fix": "Add to DiscoveryPreview spec: 'All URLs in the urls prop must be valid absolute HTTP(S) URLs. URLs with fragments or query parameters are allowed but treated as distinct URLs. The component does not validate; assumes backend validation already occurred.'"
+    },
+    {
+      "id": 10,
+      "severity": "NIT",
+      "title": "Error message for demo URL safety guard could be clearer about context",
+      "location": "Finding #1 error message proposal",
+      "problem": "Proposed message 'Fixture URLs detected outside demo mode — scan blocked for safety. Enable DEMO_MODE=true...' assumes user intends to enable demo, but user may have accidentally entered demo domain.",
+      "impact": "UX/messaging clarity; no functional impact.",
+      "fix": "Use more explanatory message: 'The domain demo.tata-aig.local is reserved for demo purposes and cannot be scanned in production mode. To run a demo, set DEMO_MODE=true on the backend.'"
+    }
+  ],
+  "verified_assumptions": [
+    "Demo mode implementation (isDemoMode, loadDemoFixtures) already exists and is correct",
+    "Demo fixtures file exists with correct structure and 7 URLs",
+    "License service exports TRIAL_PAGE_LIMIT=3 and getLicenseState()",
+    "API client is a thin HTTP wrapper with no business logic",
+    "scanOrchestrator follows discovery → crawl → analyze flow",
+    "Database schema is extensible (no blocker columns)",
+    "sitemap.discoverAllUrls returns demoLabel in responses",
+    "NewScan.jsx exists with single URL input"
+  ],
+  "unverified_wrong_assumptions": [
+    "Demo URLs are blocked when demo mode is OFF — code missing",
+    "API client createScan accepts scanMode and selectedUrls — not present",
+    "POST /api/scans accepts scan_mode and selected_urls — not handled",
+    "startScan accepts options parameter — signature incomplete",
+    "scan_mode column exists in scans table — missing"
+  ],
+  "recommendation": "Do not proceed to implementation. Fix the 3 HIGH findings first (safety guard, API signatures, options parameter). These are prerequisites. MEDIUM findings are follow-on changes needed for completeness. NIT findings are optional improvements."
+}

@@ -1,329 +1,168 @@
-import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, FileText, ChevronRight, Clock, Download, Zap } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 
 export default function ScanConsole({ scanId, socket, onViewReport }) {
   const [scan, setScan] = useState(null);
-  const [logs, setLogs] = useState([]);
-  const [recentPages, setRecentPages] = useState([]);
-  const [recentFindings, setRecentFindings] = useState([]);
-  const [findingsCount, setFindingsCount] = useState(0);
-  const [severityBreakdown, setSeverityBreakdown] = useState({ HIGH: 0, MEDIUM: 0, LOW: 0 });
-  const [manualCount, setManualCount] = useState(0);
-  const [licenseLimited, setLicenseLimited] = useState(null);
-  const logEndRef = useRef(null);
-  const findingsEndRef = useRef(null);
+  const [status, setStatus] = useState(null);
+  const [found, setFound] = useState(0);
+  const [scanned, setScanned] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [latestPages, setLatestPages] = useState([]);
 
   const refreshScan = () => api.getScan(scanId).then(setScan).catch(() => {});
 
-  useEffect(() => { refreshScan(); }, [scanId]);
+  useEffect(() => {
+    refreshScan();
+  }, [scanId]);
 
   useEffect(() => {
     if (!socket) return;
     socket.emit('subscribe', scanId);
 
-    const onLog = (data) => setLogs(prev => [...prev.slice(-60), data.message]);
-    const onDiscovered = () => refreshScan();
     const onPageDone = (data) => {
-      setRecentPages(prev => [data, ...prev.slice(0, 9)]);
-      
-      // Track new findings
-      if (data.findingsCount > 0) {
-        const newFinding = {
-          url: data.url,
-          title: data.title || data.url,
-          findingsCount: data.findingsCount,
-          risk: data.risk,
-          timestamp: Date.now(),
-        };
-        setRecentFindings(prev => [newFinding, ...prev.slice(0, 4)]);
-        setFindingsCount(prev => prev + data.findingsCount);
-        
-        // Update severity breakdown
-        if (data.risk === 'HIGH' || data.risk === 'MEDIUM' || data.risk === 'LOW') {
-          setSeverityBreakdown(prev => ({
-            ...prev,
-            [data.risk]: prev[data.risk] + data.findingsCount,
-          }));
-        }
-      }
-      
+      setScanned((prev) => prev + 1);
+      setLatestPages((prev) => [data.url.substring(0, 60), ...prev.slice(0, 4)]);
       refreshScan();
     };
-    const onComplete = () => refreshScan();
-    const onPaused = () => refreshScan();
-    const onError = (data) => { setLogs(prev => [...prev, `ERROR: ${data.message}`]); refreshScan(); };
-    const onLicenseLimited = (data) => setLicenseLimited(data);
+    const onComplete = () => {
+      setStatus('Complete');
+      refreshScan();
+    };
+    const onDiscovered = () => {
+      refreshScan();
+    };
 
-    socket.on('scan:log', onLog);
-    socket.on('scan:discovered', onDiscovered);
     socket.on('scan:page-done', onPageDone);
     socket.on('scan:complete', onComplete);
-    socket.on('scan:paused', onPaused);
-    socket.on('scan:error', onError);
-    socket.on('scan:license-limited', onLicenseLimited);
+    socket.on('scan:discovered', onDiscovered);
 
     return () => {
       socket.emit('unsubscribe', scanId);
-      socket.off('scan:log', onLog);
-      socket.off('scan:discovered', onDiscovered);
       socket.off('scan:page-done', onPageDone);
       socket.off('scan:complete', onComplete);
-      socket.off('scan:paused', onPaused);
-      socket.off('scan:error', onError);
-      socket.off('scan:license-limited', onLicenseLimited);
+      socket.off('scan:discovered', onDiscovered);
     };
   }, [socket, scanId]);
 
-  useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
-  useEffect(() => { findingsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [recentFindings]);
-
   useEffect(() => {
-    api.getManualReview(scanId).then(items => setManualCount(items.filter(i => i.status === 'pending').length)).catch(() => {});
-  }, [scanId, scan?.scanned_pages]);
+    if (!scan) return;
+    if (!status) {
+      setStatus(scan.scan_mode === 'main-domain' ? 'Discovering' : 'Scanning');
+    }
+    if (scan.total_pages > 0) {
+      setFound(scan.total_pages);
+      setScanned(scan.scanned_pages);
+    }
+  }, [scan, status]);
 
-  if (!scan) return <div style={{ textAlign: 'center', padding: 80, color: '#8B8378' }}>Loading scan...</div>;
+  if (!scan) return <div className="content center" style={{ padding: '80px 0' }}>Loading scan...</div>;
 
-  const progress = scan.total_pages > 0 ? Math.round((scan.scanned_pages / scan.total_pages) * 100) : 0;
-  const riskCounts = scan.risk_counts || {};
+  const total = scan.total_pages;
+  const current = scan.scanned_pages;
+  const progress = total > 0 ? Math.round((current / total) * 100) : 0;
 
-  const severityStyle = {
-    HIGH:   { bg: '#F8E8E4', text: '#8B2E1F', border: '#B8442E' },
-    MEDIUM: { bg: '#FBF3DC', text: '#8A6D1F', border: '#C99A2E' },
-    LOW:    { bg: '#E8EFE9', text: '#2F5A3E', border: '#4A7C59' },
-    ERROR:  { bg: '#F1F5F9', text: '#64748B', border: '#94A3B8' },
-    CLEAN:  { bg: '#E8EFE9', text: '#2F5A3E', border: '#4A7C59' },
-  };
+  const isDiscovering = status === 'Discovering';
+  const isComplete = status === 'Complete';
 
-  const handlePauseResume = async () => {
-    if (scan.status === 'scanning') await api.pauseScan(scanId);
-    else if (scan.status === 'paused') await api.restartScan(scanId);
-    refreshScan();
-  };
-
-  return (
-    <>
-      {licenseLimited && (
-        <div style={{
-          background: '#FBF3DC', border: '1px solid #C99A2E', padding: '12px 18px',
-          marginBottom: 20, fontSize: 12.5, color: '#78350F',
-        }}>
-          <strong style={{ color: '#8A6D1F' }}>
-            {licenseLimited.trial ? 'TRIAL MODE' : 'LICENSE CAP'}
-          </strong>
-          {' — '}scanning {licenseLimited.limit} of {licenseLimited.discovered} discovered pages.
-          {licenseLimited.trial && ' Install a license key on the New Scan page to unlock more.'}
+  if (isDiscovering) {
+    return (
+      <div className="content">
+        <h2 className="big">Discovering pages on {scan.scan_host}</h2>
+        <div className="bar">
+          <div style={{ width: `${progress}%` }} />
         </div>
-      )}
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 1, background: '#0B1929', marginBottom: 28 }}>
-        {[
-          { label: 'DISCOVERED', value: scan.total_pages },
-          { label: 'SCANNED', value: scan.scanned_pages },
-          { label: 'FINDINGS', value: findingsCount, color: '#C9A961' },
-          { label: 'HIGH RISK', value: riskCounts.HIGH || 0, color: '#B8442E' },
-          { label: 'MEDIUM RISK', value: riskCounts.MEDIUM || 0, color: '#C99A2E' },
-          { label: 'CLEAN', value: riskCounts.CLEAN || 0, color: '#4A7C59' },
-        ].map((s, i) => (
-          <div key={i} style={{ background: '#F5F1E8', padding: '16px 18px' }}>
-            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, color: '#8B8378', letterSpacing: '0.1em', marginBottom: 6 }}>{s.label}</div>
-            <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 28, fontWeight: 700, color: s.color || '#0B1929' }}>{s.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24, marginBottom: 24 }}>
-        <div style={{ background: 'white', border: '1px solid #D8D0C0' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #D8D0C0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#EFE9DB' }}>
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: '0.06em', fontWeight: 500 }}>
-              {scan.status === 'scanning' && '▸ SCANNING'}
-              {scan.status === 'paused' && '▸ PAUSED'}
-              {scan.status === 'complete' && '▸ COMPLETE'}
-              {scan.status === 'error' && '▸ ERROR'}
-              {scan.status === 'discovering' && '▸ DISCOVERING PAGES'}
-            </span>
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: '#8B8378' }}>{progress}%</span>
-          </div>
-
-          <div style={{ padding: 24 }}>
-            <div style={{ height: 6, background: '#EFE9DB', marginBottom: 20 }}>
-              <div style={{ height: '100%', width: `${progress}%`, background: '#0B1929', transition: 'width 0.3s' }} />
-            </div>
-
-            <div style={{
-              background: '#0B1929', color: '#8FD19E', fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: 11, padding: 16, height: 220, overflowY: 'auto', lineHeight: 1.7,
-            }}>
-              {logs.length === 0 && <div style={{ color: '#5C7285' }}>Waiting for scan activity...</div>}
-              {logs.map((log, i) => (
-                <div key={i} style={{ color: log.startsWith('ERROR') ? '#F87171' : undefined }}>{log}</div>
-              ))}
-              <div ref={logEndRef} />
-            </div>
-
-            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-              <button
-                onClick={handlePauseResume}
-                disabled={scan.status === 'complete' || scan.status === 'discovering'}
-                style={{
-                  flex: 1, padding: '12px', background: '#0B1929', color: '#F5F1E8', border: 'none',
-                  cursor: 'pointer', fontFamily: "'IBM Plex Sans', sans-serif", fontSize: 13, fontWeight: 600,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  opacity: (scan.status === 'complete' || scan.status === 'discovering') ? 0.5 : 1,
-                }}
-              >
-                {scan.status === 'scanning' ? <Pause size={15} /> : <Play size={15} />}
-                {scan.status === 'scanning' ? 'PAUSE SCAN' : 'RESUME SCAN'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: 'white', border: '1px solid #D8D0C0' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #D8D0C0', background: '#EFE9DB' }}>
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: '0.06em', fontWeight: 500 }}>
-              ▸ LATEST PAGES SCANNED
-            </span>
+        <div className="stats">
+          <div>
+            <span>Pages found</span>
+            <b>{found}</b>
           </div>
           <div>
-            {recentPages.length === 0 && (
-              <div style={{ padding: 20, fontSize: 12.5, color: '#8B8378' }}>No pages analyzed yet.</div>
-            )}
-            {recentPages.map((p, i) => {
-              const s = severityStyle[p.risk] || severityStyle.LOW;
-              return (
-                <div key={i} style={{ padding: '14px 20px', borderBottom: i < recentPages.length - 1 ? '1px solid #EFE9DB' : 'none' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, fontWeight: 600, padding: '2px 7px', background: s.bg, color: s.text, border: `1px solid ${s.border}` }}>{p.risk}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{p.findingsCount} finding{p.findingsCount !== 1 ? 's' : ''}</span>
-                  </div>
-                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: '#8B8378' }}>{p.url}</div>
-                </div>
-              );
-            })}
+            <span>Pages checked</span>
+            <b>{scanned}</b>
+          </div>
+          <div>
+            <span>Status</span>
+            <b className="red">{status}</b>
+          </div>
+          <div>
+            <span>Progress</span>
+            <b>{progress}%</b>
           </div>
         </div>
-
-        <div style={{ background: 'white', border: '1px solid #D8D0C0' }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #D8D0C0', background: '#EFE9DB' }}>
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, letterSpacing: '0.06em', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Zap size={13} /> FINDINGS DISCOVERED
-            </span>
-          </div>
-          <div style={{ padding: '20px' }}>
-            {scan.status === 'complete' ? (
-              <div>
-                <div style={{ marginBottom: 20, padding: '14px', background: '#F5F1E8', border: '1px solid #E8E0D0' }}>
-                  <div style={{ fontSize: 11, color: '#8B8378', marginBottom: 10 }}>SCAN COMPLETE — FINAL FINDINGS</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div style={{ textAlign: 'center', padding: '10px', background: 'white', border: '1px solid #D8D0C0' }}>
-                      <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 24, fontWeight: 700, color: '#0B1929' }}>{findingsCount}</div>
-                      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8.5, color: '#8B8378', letterSpacing: '0.05em', marginTop: 4 }}>TOTAL FINDINGS</div>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: 'white', border: '1px solid #D8D0C0' }}>
-                        <span style={{ color: '#8B2E1F', fontWeight: 600 }}>HIGH:</span>
-                        <span style={{ fontWeight: 700, color: '#B8442E' }}>{severityBreakdown.HIGH}</span>
-                      </div>
-                      <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: 'white', border: '1px solid #D8D0C0' }}>
-                        <span style={{ color: '#8A6D1F', fontWeight: 600 }}>MEDIUM:</span>
-                        <span style={{ fontWeight: 700, color: '#C99A2E' }}>{severityBreakdown.MEDIUM}</span>
-                      </div>
-                      <div style={{ fontSize: 11, display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: 'white', border: '1px solid #D8D0C0' }}>
-                        <span style={{ color: '#2F5A3E', fontWeight: 600 }}>LOW:</span>
-                        <span style={{ fontWeight: 700, color: '#4A7C59' }}>{severityBreakdown.LOW}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div>
-                {recentFindings.length === 0 && (
-                  <div style={{ fontSize: 12.5, color: '#8B8378', textAlign: 'center', padding: '20px 0' }}>
-                    Waiting for findings...
-                  </div>
-                )}
-                {recentFindings.length > 0 && (
-                  <div>
-                    <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid #D8D0C0', fontSize: 11, color: '#8B8378' }}>
-                      <strong>{findingsCount}</strong> findings discovered across scanned pages
-                    </div>
-                    {recentFindings.map((f, i) => {
-                      const s = severityStyle[f.risk] || severityStyle.LOW;
-                      return (
-                        <div
-                          key={i}
-                          style={{
-                            padding: '12px',
-                            marginBottom: 10,
-                            background: s.bg,
-                            border: `1px solid ${s.border}`,
-                            animation: i === 0 ? 'pulse 1s ease-in-out' : 'none',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 8.5, fontWeight: 700, padding: '2px 6px', background: 'white', color: s.text, border: `1px solid ${s.border}` }}>
-                              {f.risk}
-                            </span>
-                            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9.5, fontWeight: 600, color: s.text }}>
-                              {f.findingsCount} finding{f.findingsCount !== 1 ? 's' : ''}
-                            </span>
-                          </div>
-                          <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 9, color: s.text, wordBreak: 'break-all', lineHeight: 1.3 }}>
-                            {f.title}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div ref={findingsEndRef} />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <style>{`
-        @keyframes pulse {
-          0% { box-shadow: 0 0 0 0 rgba(201, 169, 97, 0.7); }
-          70% { box-shadow: 0 0 0 6px rgba(201, 169, 97, 0); }
-          100% { box-shadow: 0 0 0 0 rgba(201, 169, 97, 0); }
-        }
-      `}</style>
-
-      <div style={{ marginTop: 24, padding: '18px 24px', background: '#0B1929', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#8B9BAA', fontSize: 12.5 }}>
-          <Clock size={15} /> {scan.total_pages - scan.scanned_pages} pages remaining · Fully local — $0 cost
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          {manualCount > 0 && (
-            <span style={{ padding: '10px 18px', color: '#F5F1E8', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 7 }}>
-              <FileText size={14} /> {manualCount} pages need manual review
-            </span>
-          )}
-          <a
-            href={api.reportUrl(scanId)}
-            style={{
-              padding: '10px 18px', background: '#C9A961', color: '#0B1929', border: 'none',
-              cursor: 'pointer', fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
-              display: 'flex', alignItems: 'center', gap: 7,
-            }}
-          >
-            <Download size={14} /> Download PDF
-          </a>
-          <button
-            onClick={onViewReport}
-            style={{
-              padding: '10px 18px', background: 'transparent', color: '#F5F1E8', border: '1px solid #5C7285',
-              cursor: 'pointer', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 7,
-            }}
-          >
-            View Dashboard <ChevronRight size={14} />
+        <hr />
+        <h3 className="section">Latest pages found</h3>
+        <ul className="rows">
+          {latestPages.map((p, i) => (
+            <li key={i}>{p}</li>
+          ))}
+        </ul>
+        <div className="actions left">
+          <button className="btn ghost" onClick={() => setStatus('Scanning')}>
+            Stop and review
+          </button>
+          <button className="btn primary" onClick={() => setStatus('Scanning')}>
+            Continue to scan
           </button>
         </div>
+        <p className="muted">Pages behind login are not assessed unless you provide test credentials.</p>
       </div>
-    </>
+    );
+  }
+
+  return (
+    <div className="content center">
+      <h2 className="big">Scanning</h2>
+      <div
+        className="ring"
+        style={{
+          '--p': (current / total) * 100,
+          width: '150px',
+          height: '150px',
+          borderRadius: '50%',
+          margin: '24px auto 16px',
+          background: `conic-gradient(var(--secondary) calc(var(--p) * 1%), var(--track) 0)`,
+          display: 'grid',
+          placeItems: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: '130px',
+            height: '130px',
+            borderRadius: '50%',
+            background: 'var(--surface)',
+            display: 'grid',
+            placeItems: 'center',
+            color: 'var(--secondary)',
+            fontSize: 'var(--fs-display, 24px)',
+            fontWeight: 700,
+          }}
+        >
+          ✓
+        </div>
+      </div>
+      <div className="big-sm">
+        Page {Math.max(current, 1)} of {total}
+      </div>
+      <div className="scan-card">
+        <div className="thumb" />
+        <div>
+          <div style={{ fontSize: 'var(--fs-m)', marginBottom: '6px' }}>{latestPages[0]}</div>
+          <b style={{ fontSize: 'var(--fs-l)' }}>
+            {scan.findings_count || 0} potential dark pattern
+            {scan.findings_count !== 1 ? 's' : ''} found so far
+          </b>
+        </div>
+      </div>
+      <div className="actions">
+        <button className="btn ghost" onClick={() => setPaused(!paused)}>
+          {paused ? 'Resume' : 'Pause'}
+        </button>
+        <button className="link" onClick={onViewReport}>
+          View results
+        </button>
+      </div>
+      <p className="muted">You can close this window. We will notify you when it finishes.</p>
+    </div>
   );
 }

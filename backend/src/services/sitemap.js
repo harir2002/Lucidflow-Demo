@@ -1,5 +1,7 @@
 const https = require('https');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 function fetchUrl(url) {
   return new Promise((resolve, reject) => {
@@ -27,6 +29,27 @@ function extractLocs(xml) {
 const SKIP = [/\.(pdf|jpg|jpeg|png|gif|svg|css|js|xml|zip|doc|xls)$/i, /\/assets\//i, /\?.*utm/i];
 function skip(url) { return SKIP.some(p => p.test(url)); }
 
+// ── Demo Mode ──────────────────────────────────────────────────────────
+// Parse DEMO_MODE explicitly: only the string "true" enables demo mode
+function isDemoMode() {
+  return process.env.DEMO_MODE === 'true';
+}
+
+// Load demo fixtures from JSON file
+function loadDemoFixtures() {
+  const fixturePath = process.env.DEMO_FIXTURE_PATH || 
+    path.join(__dirname, '..', '..', 'data', 'demo-fixtures.json');
+  if (!fs.existsSync(fixturePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+  } catch (e) {
+    console.error('[demo] Failed to load demo fixtures:', e.message);
+    return null;
+  }
+}
+
 async function parseSitemap(url, visited = new Set(), depth = 0) {
   if (depth > 5 || visited.has(url)) return [];
   visited.add(url);
@@ -43,6 +66,27 @@ async function parseSitemap(url, visited = new Set(), depth = 0) {
 }
 
 async function discoverAllUrls(baseUrl, onProgress) {
+  // ── Demo Mode Override ─────────────────────────────────────────────
+  if (isDemoMode()) {
+    const fixtures = loadDemoFixtures();
+    if (fixtures) {
+      const domain = new URL(baseUrl).hostname;
+      if (fixtures[domain]) {
+        if (onProgress) onProgress(`[DEMO] Using fixture for ${domain} — live domain discovery is not active in this demo`);
+        return {
+          urls: fixtures[domain].urls,
+          sitemapFound: fixtures[domain].sitemapFound,
+          demoLabel: fixtures[domain].label
+        };
+      }
+    }
+    // Demo mode is ON but no fixture for this domain
+    const domain = new URL(baseUrl).hostname;
+    if (onProgress) onProgress(`[DEMO] No fixture configured for ${domain} — cannot proceed in demo mode`);
+    return { urls: [], sitemapFound: false, demoMode: true };
+  }
+
+  // ── Live Discovery (original code) ─────────────────────────────────
   if (onProgress) onProgress('Checking robots.txt and sitemap.xml...');
   const sitemapUrls = [];
 

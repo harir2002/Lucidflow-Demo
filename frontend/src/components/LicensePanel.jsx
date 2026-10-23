@@ -31,23 +31,24 @@ export default function LicensePanel({ onLicenseChange }) {
   if (!license) return null;
 
   return (
-    <div style={{ background: 'white', border: '1px solid #D8D0C0', marginBottom: 20 }}>
+    <div style={{ background: '#000000', border: '1px solid #333333', marginBottom: 20, borderRadius: 3 }}>
       <div style={{
         padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        background: license.licensed ? '#E8EFE9' : '#FBF3DC',
-        borderBottom: showInput ? '1px solid #D8D0C0' : 'none',
+        background: license.licensed ? '#0a2a1f' : '#1a0000',
+        borderBottom: showInput ? '1px solid #333333' : 'none',
+        borderRadius: '3px 3px 0 0',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {license.licensed
-            ? <ShieldCheck size={17} color="#2F5A3E" />
-            : <ShieldAlert size={17} color="#8A6D1F" />}
+            ? <ShieldCheck size={17} color="#00cc00" />
+            : <ShieldAlert size={17} color="#e7000b" />}
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: license.licensed ? '#2F5A3E' : '#8A6D1F' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: license.licensed ? '#00cc00' : '#ff6666' }}>
               {license.licensed
                 ? `Licensed to ${license.licensee}`
                 : 'Trial Mode — 3 pages per scan'}
             </div>
-            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: '#8B8378', marginTop: 2 }}>
+            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10.5, color: '#999999', marginTop: 2 }}>
               {license.licensed
                 ? `${license.max_pages === -1 ? 'Unlimited pages' : license.max_pages + ' pages per scan'} · expires ${license.expires} · key ${license.key_id}`
                 : license.reason}
@@ -57,16 +58,18 @@ export default function LicensePanel({ onLicenseChange }) {
         <div style={{ display: 'flex', gap: 8 }}>
           {license.licensed ? (
             <button onClick={handleRemove} disabled={busy} style={{
-              padding: '7px 14px', background: 'transparent', border: '1px solid #8B8378',
-              color: '#5C6B78', cursor: 'pointer', fontSize: 11.5, fontFamily: "'IBM Plex Sans', sans-serif",
+              padding: '7px 14px', background: 'transparent', border: '1px solid #666666',
+              color: '#cccccc', cursor: 'pointer', fontSize: 11.5, fontFamily: "'IBM Plex Sans', sans-serif",
+              borderRadius: 3,
             }}>
               Remove Key
             </button>
           ) : (
             <button onClick={() => setShowInput(!showInput)} style={{
-              padding: '7px 14px', background: '#0B1929', border: 'none', color: '#F5F1E8',
+              padding: '7px 14px', background: '#e7000b', border: 'none', color: '#ffffff',
               cursor: 'pointer', fontSize: 11.5, fontWeight: 600, fontFamily: "'IBM Plex Sans', sans-serif",
               display: 'flex', alignItems: 'center', gap: 6,
+              borderRadius: 3,
             }}>
               <KeyRound size={13} /> Enter License Key
             </button>
@@ -77,7 +80,7 @@ export default function LicensePanel({ onLicenseChange }) {
       {showInput && !license.licensed && (
         <div style={{ padding: 18 }}>
           {error && (
-            <div style={{ background: '#F8E8E4', border: '1px solid #B8442E', color: '#8B2E1F', padding: '8px 12px', fontSize: 12, marginBottom: 12 }}>
+            <div style={{ background: '#1a0000', border: '1px solid #e7000b', color: '#ff6666', padding: '8px 12px', fontSize: 12, marginBottom: 12, borderRadius: 3 }}>
               {error}
             </div>
           )}
@@ -87,18 +90,20 @@ export default function LicensePanel({ onLicenseChange }) {
             placeholder="Paste license key here (starts with IRDAI1.)"
             rows={3}
             style={{
-              width: '100%', padding: '10px 12px', border: '1px solid #D8D0C0',
+              width: '100%', padding: '10px 12px', border: '1px solid #333333',
               fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, boxSizing: 'border-box',
               resize: 'vertical',
+              background: '#000000', color: '#ffffff', borderRadius: 3,
             }}
           />
           <button
             onClick={handleActivate}
             disabled={busy || !keyInput.trim()}
             style={{
-              marginTop: 10, padding: '10px 20px', background: '#0B1929', color: '#F5F1E8',
+              marginTop: 10, padding: '10px 20px', background: busy || !keyInput.trim() ? '#666666' : '#e7000b', color: '#ffffff',
               border: 'none', cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
-              fontFamily: "'IBM Plex Sans', sans-serif", opacity: (busy || !keyInput.trim()) ? 0.5 : 1,
+              fontFamily: "'IBM Plex Sans', sans-serif", opacity: (busy || !keyInput.trim()) ? 0.6 : 1,
+              borderRadius: 3,
             }}
           >
             {busy ? 'Activating...' : 'Activate License'}
