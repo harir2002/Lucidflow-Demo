@@ -3,10 +3,11 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const db = require('../db/database');
 const { SEVERITY_RULES } = require('../services/severity');
+const theme = require('../theme');
 
 const router = express.Router();
 
-const NAVY='#0F2545', RED='#DC2626', GREEN='#059669', AMBER='#D97706', BLUE='#2563EB', GRAY='#64748B', LIGHT='#F8FAFC';
+const NAVY=theme.primary, RED=theme.secondary, GREEN='#059669', AMBER='#D97706', BLUE='#2563EB', GRAY='#64748B', LIGHT=theme.surface;
 const RISK_COLOR={ HIGH:RED, MEDIUM:AMBER, LOW:BLUE, CLEAN:GREEN, PENDING:GRAY, ERROR:GRAY };
 const RISK_BG   ={ HIGH:'#FEF2F2', MEDIUM:'#FFFBEB', LOW:'#EFF6FF', CLEAN:'#F0FDF4', PENDING:LIGHT, ERROR:LIGHT };
 const SEV_COLOR ={ HIGH:RED, MEDIUM:AMBER, LOW:BLUE };
