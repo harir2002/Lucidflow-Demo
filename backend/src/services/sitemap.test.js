@@ -19,7 +19,7 @@ const demoFixtures = {
       'https://demo.tata-aig.local/about'
     ],
     sitemapFound: true,
-    label: 'Demo fixture — live domain discovery is not active in this demo'
+    label: 'Demo fixture — live discovery is not active in this demo'
   }
 };
 

@@ -4,6 +4,7 @@ const db = require('../db/database');
 const fs = require('fs');
 const path = require('path');
 const { startScan, pauseScan, resumeScan, cancelScan, isScanActive } = require('../services/scanOrchestrator');
+const { discoverAllUrls } = require('../services/sitemap');
 
 module.exports = (io) => {
   const router = express.Router();
@@ -55,7 +56,8 @@ module.exports = (io) => {
       res.json({
         urls: discovery.urls || [],
         sitemapFound: discovery.sitemapFound || false,
-        demoLabel: discovery.demoLabel || null
+        demoLabel: discovery.demoLabel || discovery.label || null,
+        label: discovery.label || discovery.demoLabel || null
       });
     } catch (err) {
       res.status(500).json({ error: `Discovery failed: ${err.message}` });

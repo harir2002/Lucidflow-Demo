@@ -76,6 +76,7 @@ async function discoverAllUrls(baseUrl, onProgress) {
         return {
           urls: fixtures[domain].urls,
           sitemapFound: fixtures[domain].sitemapFound,
+          label: fixtures[domain].label,
           demoLabel: fixtures[domain].label
         };
       }
