@@ -281,7 +281,14 @@ function getCachedReports() {
  */
 function checkUrl(url) {
   const mapping = matchUrl(url);
-  if (!mapping) return null;
+  if (!mapping) {
+    return {
+      found: false,
+      reportId: null,
+      organisation: null,
+      extractedContent: null,
+    };
+  }
   
   const cache = loadCache();
   const report = cache.reports.find(r => r.reportId === mapping.reportId);
