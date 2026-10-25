@@ -3,7 +3,7 @@ const path = require('path');
 const db = require('../db/database');
 const { Crawler } = require('./crawler');
 const { discoverAllUrls, scoreUrl } = require('./sitemap');
-const { analyzePage, checkOllamaAvailable } = require('./vision');
+const { analyzePage, analyzePageWithProvider, checkOllamaAvailable } = require('./vision');
 const { needsManualReview } = require('./manualReview');
 const { getLicenseState } = require('./license');
 
@@ -143,12 +143,14 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
       }
 
       emit(io, scanId, 'scan:log', { message: `Analyzing (local AI): ${pageData.title || pageData.url}` });
-      const analysis = await analyzePage(pageData, {
-        onProgress: (msg, levelOrOpts) => {
-          if (typeof levelOrOpts === 'string') log(msg, { level: levelOrOpts });
-          else log(msg, levelOrOpts);
-        },
-      });
+      
+      // Determine provider: use Groq if API key is set AND mode is 'text-only'
+      let aiProvider = 'ollama'; // default
+      if (process.env.GROQ_API_KEY && options.aiMode === 'text-only') {
+        aiProvider = 'groq';
+      }
+      
+      const analysis = await analyzePageWithProvider(pageData, aiProvider);
       const review = needsManualReview(pageData);
 
       db.prepare(`

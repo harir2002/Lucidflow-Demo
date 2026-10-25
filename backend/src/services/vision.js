@@ -273,4 +273,92 @@ async function analyzePage(pageData) {
   }
 }
 
-module.exports = { analyzePage, checkOllamaAvailable, MODEL_NAME, OLLAMA_HOST };
+/**
+ * Analyze page with specified provider (Ollama or Groq).
+ * provider: "ollama" | "groq"
+ * If provider="ollama": uses analyzePage() (screenshot + DOM)
+ * If provider="groq": extracts text evidence from DOM and calls Groq candidateDetection()
+ * If Groq fails: falls back to Ollama
+ */
+async function analyzePageWithProvider(pageData, provider = 'ollama') {
+  const { url, title, domSignals } = pageData;
+
+  if (provider === 'groq') {
+    try {
+      const groq = require('./groq');
+      
+      // Extract text evidence from DOM signals
+      const textEvidence = extractTextEvidence(url, title, domSignals);
+      console.log(`[vision] Using Groq (text-only) for: ${url}`);
+      
+      const analysis = await groq.candidateDetection(textEvidence);
+      return finalizeAnalysis(analysis, url, title);
+    } catch (err) {
+      console.warn(`[vision] Groq provider failed, falling back to Ollama: ${err.message}`);
+      // Fallback to Ollama
+      return analyzePage(pageData);
+    }
+  }
+
+  // Default: Ollama vision (screenshot + DOM)
+  return analyzePage(pageData);
+}
+
+/**
+ * Extract text evidence from DOM signals for Groq analysis.
+ * Groq is text-only, so we don't send screenshot — only text signals.
+ */
+function extractTextEvidence(url, title, domSignals = {}) {
+  const signals = domSignals || {};
+  const parts = [];
+  
+  parts.push(`Page: ${url}`);
+  if (title) parts.push(`Title: ${title}`);
+  
+  if (signals.preChecked?.length) {
+    const checked = signals.preChecked
+      .map(c => c.label || c.name || '?')
+      .join('; ');
+    parts.push(`Pre-checked items: ${checked}`);
+  }
+  
+  if (signals.badges?.length) {
+    parts.push(`Badges/Labels: ${signals.badges.slice(0, 8).join(', ')}`);
+  }
+  
+  if (signals.priceEls?.length) {
+    parts.push(`Prices shown: ${signals.priceEls.slice(0, 5).join(' | ')}`);
+  }
+  
+  if (signals.buttons?.length) {
+    parts.push(`Buttons: ${signals.buttons.slice(0, 10).join(', ')}`);
+  }
+  
+  if (signals.timers) {
+    parts.push(`Countdown timers detected: ${signals.timers}`);
+  }
+  
+  if (signals.popups) {
+    parts.push(`Modal popups: ${signals.popups}`);
+  }
+  
+  if (signals.forms) {
+    parts.push(`Form fields: ${signals.forms}`);
+  }
+  
+  if (signals.bodyText) {
+    const text = signals.bodyText.slice(0, 800);
+    parts.push(`Page text: ${text}`);
+  }
+  
+  return parts.join('\n');
+}
+
+module.exports = { 
+  analyzePage, 
+  analyzePageWithProvider,
+  extractTextEvidence,
+  checkOllamaAvailable, 
+  MODEL_NAME, 
+  OLLAMA_HOST 
+};
