@@ -4,6 +4,7 @@ const fs = require('fs');
 const db = require('../db/database');
 const { SEVERITY_RULES } = require('../services/severity');
 const theme = require('../theme');
+const { generateDynamicReport } = require('../services/reportGenerator');
 
 const router = express.Router();
 
@@ -218,6 +219,69 @@ router.get('/:scanId', async (req, res) => {
   }
 
   doc.end();
+});
+
+// Main-domain report endpoint: GET /api/report/:scanId/main-domain
+router.get('/:scanId/main-domain', async (req, res) => {
+  try {
+    const { scanId } = req.params;
+
+    // Verify scan exists
+    const scan = db.prepare(`SELECT * FROM scans WHERE id = ?`).get(scanId);
+    if (!scan) {
+      return res.status(404).json({ error: 'Scan not found' });
+    }
+
+    // Verify scan is in main-domain mode
+    if (scan.scan_mode !== 'main-domain') {
+      return res.status(400).json({
+        error: 'Scan is not in main-domain mode',
+        scanMode: scan.scan_mode,
+      });
+    }
+
+    // Verify scan is complete
+    if (scan.status !== 'complete') {
+      return res.status(400).json({
+        error: `Scan not complete. Current status: ${scan.status}`,
+      });
+    }
+
+    // Verify domain_context is set
+    if (!scan.domain_context) {
+      return res.status(400).json({
+        error: 'Scan has no domain context (required for main-domain mode)',
+      });
+    }
+
+    // Generate PDF buffer
+    let pdfBuffer;
+    try {
+      pdfBuffer = await generateDynamicReport(scanId);
+    } catch (genErr) {
+      console.error(`[REPORT] PDF generation failed for scan ${scanId}:`, genErr.message);
+      return res.status(500).json({
+        error: 'Report generation failed',
+        details: genErr.message,
+      });
+    }
+
+    // Set response headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${scan.domain_context}-${scanId.slice(0, 8)}.pdf"`
+    );
+    res.setHeader('Cache-Control', 'no-cache');
+
+    // Stream PDF to response
+    res.end(pdfBuffer);
+  } catch (err) {
+    console.error(`[REPORT] Unhandled error for main-domain report ${req.params.scanId}:`, err);
+    res.status(500).json({
+      error: 'Internal server error',
+    });
+  }
 });
 
 module.exports = router;
