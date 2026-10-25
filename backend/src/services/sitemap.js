@@ -65,6 +65,10 @@ async function parseSitemap(url, visited = new Set(), depth = 0) {
   return pages;
 }
 
+/**
+ * Extended discoverAllUrls: returns URLs with source metadata
+ * Returns: { urls: [], sitemapFound: boolean, source: "Sitemap" | "Internal link", ... }
+ */
 async function discoverAllUrls(baseUrl, onProgress) {
   // ── Demo Mode Override ─────────────────────────────────────────────
   if (isDemoMode()) {
@@ -77,7 +81,8 @@ async function discoverAllUrls(baseUrl, onProgress) {
           urls: fixtures[domain].urls,
           sitemapFound: fixtures[domain].sitemapFound,
           label: fixtures[domain].label,
-          demoLabel: fixtures[domain].label
+          demoLabel: fixtures[domain].label,
+          source: 'Sitemap'
         };
       }
     }
@@ -87,7 +92,7 @@ async function discoverAllUrls(baseUrl, onProgress) {
     return { urls: [], sitemapFound: false, demoMode: true };
   }
 
-  // ── Live Discovery (original code) ─────────────────────────────────
+  // ── Live Discovery with Source Metadata ────────────────────────────
   if (onProgress) onProgress('Checking robots.txt and sitemap.xml...');
   const sitemapUrls = [];
 
@@ -111,8 +116,27 @@ async function discoverAllUrls(baseUrl, onProgress) {
 
   const all = [];
   const visited = new Set();
-  for (const s of sitemapUrls) all.push(...await parseSitemap(s, visited));
-  return { urls: [...new Set(all)], sitemapFound: true };
+  for (const s of sitemapUrls) {
+    const urls = await parseSitemap(s, visited);
+    // Track source metadata: URLs from sitemaps have "Sitemap" source
+    all.push(...urls.map(url => ({
+      url: url,
+      source: 'Sitemap'
+    })));
+  }
+  
+  // Deduplicate by URL while preserving source metadata
+  const urlMap = new Map();
+  all.forEach(item => {
+    if (!urlMap.has(item.url)) {
+      urlMap.set(item.url, item);
+    }
+  });
+  
+  return { 
+    urls: Array.from(urlMap.values()), 
+    sitemapFound: true
+  };
 }
 
 function scoreUrl(url) {
