@@ -54,6 +54,14 @@ export const api = {
   activateLicense: (key) => request('/license', { method: 'POST', body: JSON.stringify({ key }) }),
   removeLicense: () => request('/license', { method: 'DELETE' }),
 
+  // Saved reports API
+  checkSavedReport: (url) => 
+    request(`/saved-reports/check?url=${encodeURIComponent(url)}`),
+  getSavedReport: (reportId) => 
+    request(`/saved-reports/${reportId}`),
+  downloadSavedReportUrl: (reportId) => 
+    `${API_BASE}/saved-reports/${reportId}/download`,
+
   reportUrl: (id) => `${API_BASE}/report/${id}`,
   screenshotUrl: (path) => `http://localhost:4500/screenshots/${path.split('/').pop()}`,
 };

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import DiscoveryPreview from '../components/DiscoveryPreview';
+import SavedReportBanner from '../components/SavedReportBanner';
+import ReportViewer from '../components/ReportViewer';
 
 export default function NewScan({ onScanCreated }) {
   const [scanMode, setScanMode] = useState('one-page');
@@ -13,6 +15,8 @@ export default function NewScan({ onScanCreated }) {
   const [selectedUrls, setSelectedUrls] = useState([]);
   const [demoLabel, setDemoLabel] = useState(null);
   const [items, setItems] = useState([]);
+  const [showReportViewer, setShowReportViewer] = useState(false);
+  const [savedReportId, setSavedReportId] = useState(null);
 
   const maxSelectable = license?.max_pages || 3;
   const currentText = text[scanMode];
@@ -130,6 +134,15 @@ export default function NewScan({ onScanCreated }) {
         margin: '0 auto',
       }}
     >
+      {/* SAVED REPORT BANNER */}
+      <SavedReportBanner
+        url={items.length > 0 ? items[0] : ''}
+        onOpenReport={(id) => {
+          setSavedReportId(id);
+          setShowReportViewer(true);
+        }}
+      />
+
       {/* MAIN FORM CARD */}
       <div className="card" style={{ marginBottom: 'var(--spacing-lg, 24px)' }}>
         {error && (
@@ -255,6 +268,17 @@ export default function NewScan({ onScanCreated }) {
           ))}
         </tbody>
       </table>
+
+      {/* REPORT VIEWER MODAL */}
+      {showReportViewer && (
+        <ReportViewer
+          reportId={savedReportId}
+          onClose={() => {
+            setShowReportViewer(false);
+            setSavedReportId(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const { initializeCache } = require('./services/savedReports');
 
 const app = express();
 const server = http.createServer(app);
@@ -27,6 +28,7 @@ app.use('/api/scans', require('./routes/scans')(io));
 app.use('/api/report', require('./routes/report'));
 app.use('/api/system', require('./routes/system'));
 app.use('/api/license', require('./routes/license'));
+app.use('/api/saved-reports', require('./routes/saved-reports'));
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', mode: 'fully-local' }));
 
@@ -36,12 +38,19 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 4500;
-server.listen(PORT, () => {
-  console.log('═'.repeat(60));
-  console.log('  IRDAI Dark Pattern Scanner — LOCAL BACKEND');
-  console.log('═'.repeat(60));
-  console.log(`  API running at    : http://localhost:${PORT}`);
-  console.log(`  Screenshots served: http://localhost:${PORT}/screenshots`);
-  console.log(`  Mode              : Fully offline (no external API calls)`);
-  console.log('═'.repeat(60));
+
+// Initialize saved reports cache before starting server
+initializeCache().then(() => {
+  server.listen(PORT, () => {
+    console.log('═'.repeat(60));
+    console.log('  IRDAI Dark Pattern Scanner — LOCAL BACKEND');
+    console.log('═'.repeat(60));
+    console.log(`  API running at    : http://localhost:${PORT}`);
+    console.log(`  Screenshots served: http://localhost:${PORT}/screenshots`);
+    console.log(`  Mode              : Fully offline (no external API calls)`);
+    console.log('═'.repeat(60));
+  });
+}).catch(err => {
+  console.error('Failed to initialize saved reports:', err);
+  process.exit(1);
 });

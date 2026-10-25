@@ -1,0 +1,12 @@
+{
+  "reports": [
+    {
+      "reportId": "TEST-001",
+      "organisation": "Test Org",
+      "filePath": "/path/to/file.pdf",
+      "extractedContent": {
+        "pageCount": 10
+      }
+    }
+  ]
+}
