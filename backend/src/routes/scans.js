@@ -38,7 +38,9 @@ module.exports = (io) => {
       domainContext: domain_context || null
     }).catch(err => console.error('Scan crashed:', err));
 
-    res.status(201).json({ id, target_url, status: 'discovering' });
+    const response = { id, target_url, status: 'discovering' };
+    if (domain_context) response.domain_context = domain_context;
+    res.status(201).json(response);
   });
 
   // Domain allowlist for Main Domain mode discovery
