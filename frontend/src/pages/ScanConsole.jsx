@@ -8,8 +8,24 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
   const [scanned, setScanned] = useState(0);
   const [paused, setPaused] = useState(false);
   const [latestPages, setLatestPages] = useState([]);
+  const [error, setError] = useState(null);
+  const [currentUrl, setCurrentUrl] = useState('');
+  const [pageFindings, setPageFindings] = useState(0);
 
   const refreshScan = () => api.getScan(scanId).then(setScan).catch(() => {});
+
+  const handleGenerateReport = async () => {
+    if (!scan || scan.scan_mode !== 'main-domain') return;
+    
+    try {
+      setError(null);
+      // Trigger PDF download for main-domain report
+      const downloadUrl = `${api.reportUrl(scanId)}/main-domain`;
+      window.location.href = downloadUrl;
+    } catch (err) {
+      setError(`Failed to generate report: ${err.message}`);
+    }
+  };
 
   useEffect(() => {
     refreshScan();
@@ -21,26 +37,60 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
 
     const onPageDone = (data) => {
       setScanned((prev) => prev + 1);
+      setCurrentUrl(data.url);
+      setPageFindings(data.findingsCount || 0);
       setLatestPages((prev) => [data.url.substring(0, 60), ...prev.slice(0, 4)]);
       refreshScan();
     };
-    const onComplete = () => {
-      setStatus('Complete');
+
+    const onDiscovered = (data) => {
+      // For main-domain scans: show total discovered pages
+      if (data.totalPages) {
+        setFound(data.totalPages);
+      }
       refreshScan();
     };
-    const onDiscovered = () => {
+
+    const onSelected = (data) => {
+      // For main-domain scans: show selected URLs context
+      if (data.totalSelected) {
+        setFound(data.totalSelected);
+      }
+      refreshScan();
+    };
+
+    const onComplete = () => {
+      setStatus('Complete');
+      setError(null);
+      refreshScan();
+    };
+
+    const onPaused = () => {
+      setStatus('Paused');
+      refreshScan();
+    };
+
+    const onScanError = (data) => {
+      setError(data.message || 'Scan error occurred');
+      setStatus('Error');
       refreshScan();
     };
 
     socket.on('scan:page-done', onPageDone);
     socket.on('scan:complete', onComplete);
     socket.on('scan:discovered', onDiscovered);
+    socket.on('scan:selected', onSelected);
+    socket.on('scan:paused', onPaused);
+    socket.on('scan:error', onScanError);
 
     return () => {
       socket.emit('unsubscribe', scanId);
       socket.off('scan:page-done', onPageDone);
       socket.off('scan:complete', onComplete);
       socket.off('scan:discovered', onDiscovered);
+      socket.off('scan:selected', onSelected);
+      socket.off('scan:paused', onPaused);
+      socket.off('scan:error', onScanError);
     };
   }, [socket, scanId]);
 
@@ -63,6 +113,33 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
 
   const isDiscovering = status === 'Discovering';
   const isComplete = status === 'Complete';
+  const isError = status === 'Error';
+
+  // Error display
+  if (error) {
+    return (
+      <div className="content">
+        <h2 className="big">Scan Error</h2>
+        <div
+          style={{
+            background: '#FEF2F2',
+            border: '1px solid var(--secondary)',
+            color: 'var(--secondary)',
+            padding: 'var(--spacing-md, 16px)',
+            borderRadius: '4px',
+            marginBottom: '24px',
+          }}
+        >
+          {error}
+        </div>
+        <div className="actions left">
+          <button className="btn primary" onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isDiscovering) {
     return (
@@ -109,9 +186,16 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
     );
   }
 
+  // Scanning view
+  const scanningDisplay = isComplete && scan.scan_mode === 'main-domain' 
+    ? `Scanned ${scanned} of ${total} pages`
+    : `Page ${Math.max(current, 1)} of ${total}`;
+
   return (
     <div className="content center">
-      <h2 className="big">Scanning</h2>
+      <h2 className="big">
+        {isComplete ? 'Scan Complete' : 'Scanning'}
+      </h2>
       <div
         className="ring"
         style={{
@@ -138,31 +222,60 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
             fontWeight: 700,
           }}
         >
-          ✓
+          {isComplete ? '✓' : '⏳'}
         </div>
       </div>
-      <div className="big-sm">
-        Page {Math.max(current, 1)} of {total}
-      </div>
+      <div className="big-sm">{scanningDisplay}</div>
+      
+      {currentUrl && (
+        <div style={{ fontSize: 'var(--fs-s)', color: 'var(--muted)', marginBottom: '16px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          Current: {currentUrl.substring(0, 80)}
+        </div>
+      )}
+
       <div className="scan-card">
         <div className="thumb" />
         <div>
-          <div style={{ fontSize: 'var(--fs-m)', marginBottom: '6px' }}>{latestPages[0]}</div>
+          <div style={{ fontSize: 'var(--fs-m)', marginBottom: '6px' }}>{latestPages[0] || 'Loading...'}</div>
           <b style={{ fontSize: 'var(--fs-l)' }}>
             {scan.findings_count || 0} potential dark pattern
             {scan.findings_count !== 1 ? 's' : ''} found so far
           </b>
+          {pageFindings > 0 && (
+            <div style={{ fontSize: 'var(--fs-s)', color: 'var(--secondary)', marginTop: '8px' }}>
+              Current page: {pageFindings} finding{pageFindings !== 1 ? 's' : ''}
+            </div>
+          )}
         </div>
       </div>
+      
       <div className="actions">
-        <button className="btn ghost" onClick={() => setPaused(!paused)}>
-          {paused ? 'Resume' : 'Pause'}
-        </button>
-        <button className="link" onClick={onViewReport}>
-          View results
-        </button>
+        {isComplete ? (
+          <>
+            {scan.scan_mode === 'main-domain' && (
+              <button className="btn primary" onClick={handleGenerateReport}>
+                Generate Report
+              </button>
+            )}
+            <button className="btn secondary" onClick={onViewReport}>
+              View results
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn ghost" onClick={() => setPaused(!paused)}>
+              {paused ? 'Resume' : 'Pause'}
+            </button>
+            <button className="link" onClick={onViewReport}>
+              View results
+            </button>
+          </>
+        )}
       </div>
-      <p className="muted">You can close this window. We will notify you when it finishes.</p>
+      
+      {!isComplete && (
+        <p className="muted">You can close this window. We will notify you when it finishes.</p>
+      )}
     </div>
   );
 }
