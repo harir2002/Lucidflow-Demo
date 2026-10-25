@@ -17,7 +17,7 @@ function emit(io, scanId, event, payload) {
 }
 
 async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
-  const { scanMode = 'one-page', selectedUrls = [] } = options;
+  const { scanMode = 'one-page', selectedUrls = [], domainContext = null } = options;
   activeScans.set(scanId, { paused: false, cancelled: false });
 
   const updateScan = (fields) => {
@@ -37,6 +37,7 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
 
     // ── URL Selection by Mode ─────────────────────────────────────────────
     let allUrls = [];
+    let resolvedDomainContext = domainContext;
     
     if (scanMode === 'one-page') {
       // One Page mode: scan only the target URL, no discovery
@@ -45,7 +46,18 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
     } else if (scanMode === 'main-domain' && selectedUrls && selectedUrls.length > 0) {
       // Main Domain mode: use pre-selected URLs from discovery
       allUrls = selectedUrls;
-      emit(io, scanId, 'scan:log', { message: `Main Domain mode: scanning ${selectedUrls.length} selected page(s)` });
+      
+      // Extract domain context from first selected URL if not provided
+      if (!resolvedDomainContext && selectedUrls.length > 0) {
+        try {
+          resolvedDomainContext = new URL(selectedUrls[0]).hostname;
+        } catch (err) {
+          console.error('Failed to extract domain from first selected URL:', err);
+        }
+      }
+      
+      emit(io, scanId, 'scan:log', { message: `Main Domain mode: scanning ${selectedUrls.length} selected page(s) from ${resolvedDomainContext || 'unknown domain'}` });
+      emit(io, scanId, 'scan:selected', { totalSelected: selectedUrls.length, domain: resolvedDomainContext });
     } else {
       // Fallback: discover URLs (backward compatibility or main-domain without selections)
       emit(io, scanId, 'scan:log', { message: 'Discovering pages from sitemap...' });
@@ -108,7 +120,7 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
       });
     }
 
-    updateScan({ total_pages: allUrls.length, status: 'scanning' });
+    updateScan({ total_pages: allUrls.length, status: 'scanning', domain_context: resolvedDomainContext });
     emit(io, scanId, 'scan:discovered', { totalPages: allUrls.length });
 
     // Insert page placeholders
@@ -199,7 +211,7 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
     }
   } catch (err) {
     updateScan({ status: 'error' });
-    log(`Scan error: ${err.message}`, { level: 'error' });
+    console.error(`Scan error: ${err.message}`);
     emit(io, scanId, 'scan:error', { message: err.message });
   } finally {
     activeScans.delete(scanId);

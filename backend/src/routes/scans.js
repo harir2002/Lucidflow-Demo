@@ -11,7 +11,7 @@ module.exports = (io) => {
 
   // Create + start a new scan
   router.post('/', (req, res) => {
-    const { target_url, url_pattern, scan_mode, selected_urls } = req.body;
+    const { target_url, url_pattern, scan_mode, selected_urls, domain_context } = req.body;
     if (!target_url) return res.status(400).json({ error: 'target_url is required' });
 
     // Validate scan_mode if provided
@@ -28,13 +28,14 @@ module.exports = (io) => {
     try { parsed = new URL(target_url); } catch { return res.status(400).json({ error: 'target_url is not a valid URL' }); }
 
     const id = uuid();
-    db.prepare(`INSERT INTO scans (id, target_url, url_pattern, scan_mode, status) VALUES (?, ?, ?, ?, 'discovering')`)
-      .run(id, target_url, url_pattern || null, scan_mode || 'one-page');
+    db.prepare(`INSERT INTO scans (id, target_url, url_pattern, scan_mode, domain_context, status) VALUES (?, ?, ?, ?, ?, 'discovering')`)
+      .run(id, target_url, url_pattern || null, scan_mode || 'one-page', domain_context || null);
 
     // Fire and forget — progress streamed via websocket
     startScan(id, target_url, url_pattern, io, {
       scanMode: scan_mode || 'one-page',
-      selectedUrls: selected_urls || []
+      selectedUrls: selected_urls || [],
+      domainContext: domain_context || null
     }).catch(err => console.error('Scan crashed:', err));
 
     res.status(201).json({ id, target_url, status: 'discovering' });
@@ -207,7 +208,8 @@ module.exports = (io) => {
     db.prepare(`UPDATE scans SET status = 'scanning' WHERE id = ?`).run(req.params.id);
     startScan(req.params.id, scan.target_url, scan.url_pattern, io, {
       scanMode: scan.scan_mode || 'one-page',
-      selectedUrls: []
+      selectedUrls: [],
+      domainContext: scan.domain_context || null
     }).catch(err => console.error('Scan crashed:', err));
     res.json({ status: 'scanning' });
   });
