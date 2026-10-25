@@ -40,19 +40,38 @@ module.exports = (io) => {
     res.status(201).json({ id, target_url, status: 'discovering' });
   });
 
+  // Domain allowlist for Main Domain mode discovery
+  const ALLOWED_DOMAINS = [
+    'creditinsurancecalculator.allianceinsurance.in',
+    'insurance-deception-explorer.lovable.app',
+    'demo.tata-aig.local' // Demo domain
+  ];
+
   // Discover URLs from a domain (for Main Domain mode)
   router.post('/discover', async (req, res) => {
     const { base_url } = req.body;
     if (!base_url) return res.status(400).json({ error: 'base_url is required' });
 
+    let parsed;
     try {
-      new URL(base_url);
+      parsed = new URL(base_url);
     } catch {
+      console.log(`[DISCOVERY-AUDIT] Invalid URL attempted: ${base_url}`);
       return res.status(400).json({ error: 'base_url is not a valid URL' });
     }
 
+    const domain = parsed.hostname;
+    if (!ALLOWED_DOMAINS.includes(domain)) {
+      console.log(`[DISCOVERY-AUDIT] Domain not in allowlist: ${domain} (from ${base_url})`);
+      return res.status(403).json({ error: `Domain ${domain} is not approved for discovery` });
+    }
+
+    console.log(`[DISCOVERY-AUDIT] Discovery initiated for domain: ${domain}`);
+
     try {
       const discovery = await discoverAllUrls(base_url, null);
+      console.log(`[DISCOVERY-AUDIT] Discovery completed for ${domain}: found ${discovery.urls?.length || 0} URLs`);
+      
       res.json({
         urls: discovery.urls || [],
         sitemapFound: discovery.sitemapFound || false,
@@ -60,6 +79,7 @@ module.exports = (io) => {
         label: discovery.label || discovery.demoLabel || null
       });
     } catch (err) {
+      console.log(`[DISCOVERY-AUDIT] Discovery failed for ${domain}: ${err.message}`);
       res.status(500).json({ error: `Discovery failed: ${err.message}` });
     }
   });
