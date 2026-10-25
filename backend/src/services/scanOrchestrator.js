@@ -68,7 +68,8 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
         emit(io, scanId, 'scan:log', { message: demoLabel });
       }
       
-      allUrls = sitemapUrls;
+      // Convert URL objects to strings (discoverAllUrls returns objects with { url, source } metadata)
+      allUrls = (sitemapUrls || []).map(item => typeof item === 'string' ? item : item.url);
       if (!sitemapFound || allUrls.length === 0) {
         emit(io, scanId, 'scan:log', { message: 'No sitemap found — crawling to discover pages...' });
         const crawler = new Crawler({ targetUrl, crawlDelayMs: 600, screenshotsDir: SCREENSHOTS_DIR });

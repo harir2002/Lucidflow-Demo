@@ -1,13 +1,13 @@
 {
   "demo.tata-aig.local": {
     "urls": [
-      "https://demo.tata-aig.local/",
-      "https://demo.tata-aig.local/car-insurance",
-      "https://demo.tata-aig.local/car-insurance/quote",
-      "https://demo.tata-aig.local/checkout",
-      "https://demo.tata-aig.local/claims",
-      "https://demo.tata-aig.local/faq",
-      "https://demo.tata-aig.local/about"
+      { "url": "https://demo.tata-aig.local/", "source": "Sitemap" },
+      { "url": "https://demo.tata-aig.local/car-insurance", "source": "Sitemap" },
+      { "url": "https://demo.tata-aig.local/car-insurance/quote", "source": "Sitemap" },
+      { "url": "https://demo.tata-aig.local/checkout", "source": "Sitemap" },
+      { "url": "https://demo.tata-aig.local/claims", "source": "Sitemap" },
+      { "url": "https://demo.tata-aig.local/faq", "source": "Sitemap" },
+      { "url": "https://demo.tata-aig.local/about", "source": "Sitemap" }
     ],
     "sitemapFound": true,
     "label": "Demo fixture — live discovery is not active in this demo"

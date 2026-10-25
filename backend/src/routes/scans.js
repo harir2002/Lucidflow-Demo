@@ -75,8 +75,13 @@ module.exports = (io) => {
       const discovery = await discoverAllUrls(base_url, null);
       console.log(`[DISCOVERY-AUDIT] Discovery completed for ${domain}: found ${discovery.urls?.length || 0} URLs`);
       
+      // Convert URL objects to strings for API response (backward compatibility)
+      const urlsForResponse = (discovery.urls || []).map(item => 
+        typeof item === 'string' ? item : item.url
+      );
+      
       res.json({
-        urls: discovery.urls || [],
+        urls: urlsForResponse,
         sitemapFound: discovery.sitemapFound || false,
         demoLabel: discovery.demoLabel || discovery.label || null,
         label: discovery.label || discovery.demoLabel || null
