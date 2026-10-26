@@ -67,7 +67,23 @@ router.get('/:scanId', async (req, res) => {
   const scan = db.prepare(`SELECT * FROM scans WHERE id = ?`).get(req.params.scanId);
   if (!scan) return res.status(404).json({ error: 'Scan not found' });
 
-  // ── Check if this is a Saved Report (exact URL match) ──
+  // ── Check if this URL has an imported JSON report with PDF ──
+  const jsonReportData = getJsonReportForUrl(scan.target_url);
+  if (jsonReportData) {
+    console.log(`[REPORT] Returning original PDF for imported report: ${scan.target_url}`);
+    const pdfPath = jsonReportData.mapping.filePath;
+    
+    if (fs.existsSync(pdfPath)) {
+      const fileName = path.basename(pdfPath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Content-Length', fs.statSync(pdfPath).size);
+      fs.createReadStream(pdfPath).pipe(res);
+      return;
+    }
+  }
+
+  // ── Fallback: Check if this is a Saved Report (old domain-only matching) ──
   const savedReport = checkUrl(scan.target_url);
   if (savedReport.found) {
     console.log(`[REPORT] Returning saved report PDF for: ${scan.target_url}`);
