@@ -115,6 +115,9 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
   const isComplete = status === 'Complete';
   const isError = status === 'Error';
 
+  // If scan is complete and has imported report, show completion with report findings
+  const hasImportedReport = scan && scan.findings_count > 0 && isComplete;
+
   // Error display
   if (error) {
     return (
@@ -237,11 +240,11 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
         <div className="thumb" />
         <div>
           <div style={{ fontSize: 'var(--fs-m)', marginBottom: '6px' }}>{latestPages[0] || 'Loading...'}</div>
-          <b style={{ fontSize: 'var(--fs-l)' }}>
+          <b style={{ fontSize: 'var(--fs-l)', color: scan.findings_count > 0 ? 'var(--secondary)' : 'var(--text)' }}>
             {scan.findings_count || 0} potential dark pattern
-            {scan.findings_count !== 1 ? 's' : ''} found so far
+            {scan.findings_count !== 1 ? 's' : ''} found{isComplete ? '' : ' so far'}
           </b>
-          {pageFindings > 0 && (
+          {pageFindings > 0 && !isComplete && (
             <div style={{ fontSize: 'var(--fs-s)', color: 'var(--secondary)', marginTop: '8px' }}>
               Current page: {pageFindings} finding{pageFindings !== 1 ? 's' : ''}
             </div>

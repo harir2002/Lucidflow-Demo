@@ -18,18 +18,19 @@ export default function ReportDashboard({ scanId }) {
   useEffect(() => {
     const fetchImportedReport = async () => {
       try {
-        const data = await api.getScan(scanId);
+        setIsLoadingReport(true);
         // Try to fetch imported report if this is a saved report URL
         const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:4500/api'}/report/${scanId}/json`);
         if (res.ok) {
           const reportData = await res.json();
           setImportedReport(reportData);
+          setIsLoadingReport(false);
+          return; // Stop here - we have imported report
         }
       } catch (err) {
         console.log('No imported report available');
-      } finally {
-        setIsLoadingReport(false);
       }
+      setIsLoadingReport(false);
     };
     fetchImportedReport();
   }, [scanId]);
@@ -47,7 +48,7 @@ export default function ReportDashboard({ scanId }) {
 
   if (!scan && isLoadingReport) return <div className="content center" style={{ padding: '80px 0' }}>Loading report...</div>;
 
-  // If we have an imported JSON report, display that instead
+  // If we have an imported JSON report, display that instead (even if live scan is still running)
   if (importedReport && !isLoadingReport) {
     return <ImportedReportView scanId={scanId} reportData={importedReport} />;
   }

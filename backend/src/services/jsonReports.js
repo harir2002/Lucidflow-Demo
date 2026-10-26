@@ -108,6 +108,8 @@ function convertJsonToReportView(jsonReport) {
 
   // Risk counts from findings
   const riskCounts = { HIGH: 0, MEDIUM: 0, LOW: 0, CLEAN: 0 };
+  const findingsCount = findings.length;
+  
   findings.forEach((f) => {
     const sev = f.severity || 'LOW';
     if (riskCounts[sev] !== undefined) {
@@ -127,13 +129,14 @@ function convertJsonToReportView(jsonReport) {
     // Executive summary
     summary: {
       pagesAssessed: kpis.pages_screens_assessed || 0,
-      potentialFindings: kpis.potential_findings || 0,
-      highCritical: kpis.high_critical || 0,
+      potentialFindings: kpis.potential_findings || findingsCount || 0,
+      highCritical: kpis.high_critical || riskCounts.HIGH || 0,
       revalidatedClosed: kpis.revalidated_closed || 0,
     },
 
     // Risk distribution
     riskCounts,
+    findingsCount,
 
     // Pattern distribution
     patternDistribution: patternDist,
