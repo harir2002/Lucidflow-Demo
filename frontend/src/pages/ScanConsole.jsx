@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { api } from '../api/client';
 
 export default function ScanConsole({ scanId, socket, onViewReport }) {
   const [scan, setScan] = useState(null);
@@ -11,6 +10,8 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
   const [error, setError] = useState(null);
   const [currentUrl, setCurrentUrl] = useState('');
   const [pageFindings, setPageFindings] = useState(0);
+  const [liveProgress, setLiveProgress] = useState(0); // 0-100 for live updates
+  const [elapsed, setElapsed] = useState(0); // seconds
 
   const refreshScan = () => api.getScan(scanId).then(setScan).catch(() => {});
 
@@ -76,12 +77,18 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
       refreshScan();
     };
 
+    const onProgress = (data) => {
+      setLiveProgress(data.progress || 0);
+      setElapsed(data.elapsed || 0);
+    };
+
     socket.on('scan:page-done', onPageDone);
     socket.on('scan:complete', onComplete);
     socket.on('scan:discovered', onDiscovered);
     socket.on('scan:selected', onSelected);
     socket.on('scan:paused', onPaused);
     socket.on('scan:error', onScanError);
+    socket.on('scan:progress', onProgress);
 
     return () => {
       socket.emit('unsubscribe', scanId);
@@ -91,6 +98,7 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
       socket.off('scan:selected', onSelected);
       socket.off('scan:paused', onPaused);
       socket.off('scan:error', onScanError);
+      socket.off('scan:progress', onProgress);
     };
   }, [socket, scanId]);
 
@@ -202,7 +210,7 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
       <div
         className="ring"
         style={{
-          '--p': (current / total) * 100,
+          '--p': liveProgress > 0 ? liveProgress : progress,
           width: '150px',
           height: '150px',
           borderRadius: '50%',
@@ -210,6 +218,7 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
           background: `conic-gradient(var(--secondary) calc(var(--p) * 1%), var(--track) 0)`,
           display: 'grid',
           placeItems: 'center',
+          transition: 'background 0.1s linear',
         }}
       >
         <div
@@ -228,7 +237,7 @@ export default function ScanConsole({ scanId, socket, onViewReport }) {
           {isComplete ? '✓' : '⏳'}
         </div>
       </div>
-      <div className="big-sm">{scanningDisplay}</div>
+      <div className="big-sm">{scanningDisplay} {elapsed > 0 && `(${elapsed}s)`}</div>
       
       {currentUrl && (
         <div style={{ fontSize: 'var(--fs-s)', color: 'var(--muted)', marginBottom: '16px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>

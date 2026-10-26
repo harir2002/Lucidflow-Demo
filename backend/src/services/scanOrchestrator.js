@@ -74,10 +74,23 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
         updateScan({ total_pages: 1, status: 'scanning' });
         emit(io, scanId, 'scan:discovered', { totalPages: 1 });
         
-        // Mock delay for imported reports
-        const delayMs = 120000 + Math.random() * 60000;
-        console.log(`[MOCK-SCAN] Imported report - simulating ${Math.round(delayMs/1000)}s...`);
-        emit(io, scanId, 'scan:log', { message: `Analyzing (${Math.round(delayMs/1000)}s)...` });
+        // Mock delay for imported reports (60 seconds for demo)
+        const delayMs = 60000; // 60 seconds
+        console.log(`[MOCK-SCAN] Imported report - simulating 60s analysis...`);
+        emit(io, scanId, 'scan:log', { message: `Analyzing (60s)...` });
+        
+        // Emit progress updates every 100ms for smooth animation
+        const startTime = Date.now();
+        const updateInterval = setInterval(() => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min((elapsed / delayMs) * 100, 100);
+          emit(io, scanId, 'scan:progress', { progress: Math.round(progress), elapsed: Math.round(elapsed / 1000) });
+          
+          if (elapsed >= delayMs) {
+            clearInterval(updateInterval);
+          }
+        }, 100);
+        
         await new Promise(resolve => setTimeout(resolve, delayMs));
         
         // Complete
