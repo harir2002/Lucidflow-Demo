@@ -150,7 +150,17 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
     // ── Scan loop: one page at a time so pause/resume works cleanly ──────
     console.log(`[SCAN-BROWSER] Starting browser...`);
     const crawler = new Crawler({ targetUrl, sameDomainOnly: true, screenshotsDir: SCREENSHOTS_DIR });
-    const browser = await crawler._browser();
+    console.log(`[SCAN-BROWSER] Crawler created, calling _browser()...`);
+    let browser;
+    try {
+      browser = await crawler._browser();
+      console.log(`[SCAN-BROWSER] Browser instance obtained`);
+    } catch (browserErr) {
+      console.error(`[SCAN-BROWSER-ERROR] Failed to start browser: ${browserErr.message}`);
+      throw browserErr;
+    }
+    
+    console.log(`[SCAN-BROWSER] Getting context...`);
     const context = await crawler._context(browser);
     console.log(`[SCAN-BROWSER] Browser started, context ready`);
 
@@ -158,6 +168,14 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
 
     const pendingPages = db.prepare(`SELECT * FROM pages WHERE scan_id = ? AND overall_risk = 'PENDING'`).all(scanId);
     console.log(`[SCAN-PAGES] Found ${pendingPages.length} pending pages to scan`);
+    
+    if (pendingPages.length === 0) {
+      console.log(`[SCAN-PAGES] NO PENDING PAGES! This is the problem.`);
+      console.log(`[SCAN-PAGES] allUrls.length was: ${allUrls.length}`);
+      console.log(`[SCAN-PAGES] Checking total_pages in database...`);
+      const scanRow = db.prepare(`SELECT total_pages FROM scans WHERE id = ?`).get(scanId);
+      console.log(`[SCAN-PAGES] Database scan record total_pages: ${scanRow?.total_pages}`);
+    }
 
     for (const pageRow of pendingPages) {
       const state = activeScans.get(scanId);
