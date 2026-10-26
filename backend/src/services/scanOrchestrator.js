@@ -6,6 +6,7 @@ const { discoverAllUrls, scoreUrl } = require('./sitemap');
 const { analyzePage, analyzePageWithProvider, checkOllamaAvailable } = require('./vision');
 const { needsManualReview } = require('./manualReview');
 const { getLicenseState } = require('./license');
+const { getJsonReportForUrl } = require('./jsonReports');
 
 const SCREENSHOTS_DIR = path.join(__dirname, '..', '..', 'screenshots');
 
@@ -214,6 +215,15 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
     }
 
     await browser.close().catch(() => {});
+
+    // ── Mock delay for imported reports (2-3 minutes simulation) ──
+    const hasImportedReport = getJsonReportForUrl(targetUrl);
+    if (hasImportedReport) {
+      const delayMs = 120000 + Math.random() * 60000; // 2-3 minutes random
+      console.log(`[MOCK-SCAN] Imported report found. Simulating ${Math.round(delayMs/1000)}s scan time...`);
+      emit(io, scanId, 'scan:log', { message: `Simulating scan analysis (${Math.round(delayMs/1000)}s)...` });
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
 
     const finalState = activeScans.get(scanId);
     if (finalState?.cancelled) {
