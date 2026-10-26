@@ -35,40 +35,10 @@ module.exports = (io) => {
     const isSavedReport = savedReportMatch !== null;
     
     db.prepare(`INSERT INTO scans (id, target_url, url_pattern, scan_mode, domain_context, status) VALUES (?, ?, ?, ?, ?, ?)`)
-      .run(id, target_url, url_pattern || null, scan_mode || 'one-page', domain_context || null, 
-           isSavedReport ? 'complete' : 'discovering');
+      .run(id, target_url, url_pattern || null, scan_mode || 'one-page', domain_context || null, 'discovering');
 
-    // If it's a Saved Report, skip AI analysis and mark complete immediately
-    if (isSavedReport) {
-      console.log(`[SAVED-REPORT] Detected saved report for: ${target_url} (${savedReportMatch.reportId})`);
-      db.prepare(`INSERT INTO pages (id, scan_id, url, title, overall_risk, analyzed_at) VALUES (?, ?, ?, ?, ?, datetime('now'))`)
-        .run(uuid(), id, target_url, `${savedReportMatch.organisation} - ${savedReportMatch.reportId}`, 'INFO');
-      
-      // Emit complete event via websocket
-      setTimeout(() => {
-        io.to(id).emit('scan:complete', { 
-          message: 'Report loaded from PDF',
-          reportData: {
-            organisation: savedReportMatch.organisation,
-            reportId: savedReportMatch.reportId,
-            issueDate: savedReportMatch.issueDate,
-          }
-        });
-      }, 100);
-      
-      const response = { 
-        id, 
-        target_url, 
-        status: 'complete', 
-        saved_report: true, 
-        report_id: savedReportMatch.reportId,
-        organisation: savedReportMatch.organisation,
-        issue_date: savedReportMatch.issueDate,
-      };
-      return res.status(201).json(response);
-    }
-
-    // Fire and forget — progress streamed via websocket
+    // ALWAYS run startScan - it will detect imported reports and add mock delay
+    // Previously we skipped startScan for saved reports, but now we let startScan handle it
     startScan(id, target_url, url_pattern, io, {
       scanMode: scan_mode || 'one-page',
       selectedUrls: selected_urls || [],
