@@ -4,6 +4,12 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+
+// Load environment variables from .env file (except in test mode)
+if (process.env.NODE_ENV !== 'test') {
+  require('dotenv').config();
+}
+
 const { initializeCache } = require('./services/savedReports');
 
 const app = express();
