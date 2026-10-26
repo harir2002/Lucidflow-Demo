@@ -84,7 +84,9 @@ module.exports = (io) => {
   const ALLOWED_DOMAINS = [
     'creditinsurancecalculator.allianceinsurance.in',
     'insurance-deception-explorer.lovable.app',
-    'demo.tata-aig.local' // Demo domain
+    'demo.tata-aig.local', // Demo domain
+    'www.tataaig.com', // Tata AIG main domain
+    'tataaig.com' // Tata AIG without www
   ];
 
   // Discover URLs from a domain (for Main Domain mode)
