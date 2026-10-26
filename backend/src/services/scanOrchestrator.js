@@ -28,10 +28,14 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
   };
 
   try {
+    console.log(`\n[SCAN-START] scanId=${scanId}, targetUrl=${targetUrl}, scanMode=${scanMode}`);
+    
     // ── Determine AI provider before checking availability ─────────────────
     // Priority: options.aiMode > env.AI_MODE > default to 'ollama'
     const aiModeFromEnv = process.env.AI_MODE || 'vision';
     const aiMode = options.aiMode || aiModeFromEnv;
+    
+    console.log(`[SCAN-AI] AI Mode: ${aiMode}`);
     
     // Only check Ollama if NOT using Groq
     if (aiMode !== 'text-only' || !process.env.GROQ_API_KEY) {
@@ -53,6 +57,7 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
     if (scanMode === 'one-page') {
       // One Page mode: scan only the target URL, no discovery
       allUrls = [targetUrl];
+      console.log(`[SCAN-MODE] One-page mode, allUrls: ${allUrls.length}`);
       emit(io, scanId, 'scan:log', { message: `One Page mode: scanning ${targetUrl}` });
     } else if (scanMode === 'main-domain' && selectedUrls && selectedUrls.length > 0) {
       // Main Domain mode: use pre-selected URLs from discovery
@@ -133,21 +138,26 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
     }
 
     updateScan({ total_pages: allUrls.length, status: 'scanning', domain_context: resolvedDomainContext });
+    console.log(`[SCAN-URLs] Total pages to scan: ${allUrls.length}`);
     emit(io, scanId, 'scan:discovered', { totalPages: allUrls.length });
 
     // Insert page placeholders
     const insertPage = db.prepare(`INSERT OR IGNORE INTO pages (id, scan_id, url, overall_risk) VALUES (?, ?, ?, 'PENDING')`);
     const tx = db.transaction((urls) => { for (const u of urls) insertPage.run(uuid(), scanId, u); });
     tx(allUrls);
+    console.log(`[SCAN-DB] Inserted ${allUrls.length} page placeholders`);
 
     // ── Scan loop: one page at a time so pause/resume works cleanly ──────
+    console.log(`[SCAN-BROWSER] Starting browser...`);
     const crawler = new Crawler({ targetUrl, sameDomainOnly: true, screenshotsDir: SCREENSHOTS_DIR });
     const browser = await crawler._browser();
     const context = await crawler._context(browser);
+    console.log(`[SCAN-BROWSER] Browser started, context ready`);
 
     let scannedCount = db.prepare(`SELECT COUNT(*) c FROM pages WHERE scan_id = ? AND overall_risk != 'PENDING'`).get(scanId).c;
 
     const pendingPages = db.prepare(`SELECT * FROM pages WHERE scan_id = ? AND overall_risk = 'PENDING'`).all(scanId);
+    console.log(`[SCAN-PAGES] Found ${pendingPages.length} pending pages to scan`);
 
     for (const pageRow of pendingPages) {
       const state = activeScans.get(scanId);
@@ -215,6 +225,7 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
     }
 
     await browser.close().catch(() => {});
+    console.log(`[SCAN-BROWSER] Browser closed after scanning ${scannedCount} pages`);
 
     // ── Mock delay for imported reports (2-3 minutes simulation) ──
     const hasImportedReport = getJsonReportForUrl(targetUrl);
@@ -227,17 +238,22 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
 
     const finalState = activeScans.get(scanId);
     if (finalState?.cancelled) {
+      console.log(`[SCAN-END] Scan cancelled`);
       updateScan({ status: 'paused' });
       emit(io, scanId, 'scan:paused', {});
     } else {
+      console.log(`[SCAN-END] Scan complete, scannedCount=${scannedCount}`);
       updateScan({ status: 'complete' });
       emit(io, scanId, 'scan:complete', {});
     }
   } catch (err) {
+    console.error(`[SCAN-ERROR] Unhandled error: ${err.message}`);
+    console.error(err.stack);
     updateScan({ status: 'error' });
     console.error(`Scan error: ${err.message}`);
     emit(io, scanId, 'scan:error', { message: err.message });
   } finally {
+    console.log(`[SCAN-CLEANUP] Removing scan ${scanId} from activeScans`);
     activeScans.delete(scanId);
   }
 }
