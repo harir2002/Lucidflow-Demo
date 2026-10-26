@@ -27,12 +27,22 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
   };
 
   try {
-    // ── Check Ollama is available before doing anything ─────────────────
-    const ollamaCheck = await checkOllamaAvailable();
-    if (!ollamaCheck.available) {
-      updateScan({ status: 'error' });
-      emit(io, scanId, 'scan:error', { message: `Local AI model not available: ${ollamaCheck.reason}` });
-      return;
+    // ── Determine AI provider before checking availability ─────────────────
+    // Priority: options.aiMode > env.AI_MODE > default to 'ollama'
+    const aiModeFromEnv = process.env.AI_MODE || 'vision';
+    const aiMode = options.aiMode || aiModeFromEnv;
+    
+    // Only check Ollama if NOT using Groq
+    if (aiMode !== 'text-only' || !process.env.GROQ_API_KEY) {
+      const ollamaCheck = await checkOllamaAvailable();
+      if (!ollamaCheck.available) {
+        // If Groq is configured and we can fall back, skip this error
+        if (!(process.env.GROQ_API_KEY && aiMode !== 'ollama')) {
+          updateScan({ status: 'error' });
+          emit(io, scanId, 'scan:error', { message: `Local AI model not available: ${ollamaCheck.reason}` });
+          return;
+        }
+      }
     }
 
     // ── URL Selection by Mode ─────────────────────────────────────────────
@@ -157,9 +167,12 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
 
       emit(io, scanId, 'scan:log', { message: `Analyzing (local AI): ${pageData.title || pageData.url}` });
       
-      // Determine provider: use Groq if API key is set AND mode is 'text-only'
+      // Determine provider: priority is options.aiMode > env.AI_MODE
+      // If AI_MODE=text-only and GROQ_API_KEY is set, use Groq
+      // Otherwise use Ollama
       let aiProvider = 'ollama'; // default
-      if (process.env.GROQ_API_KEY && options.aiMode === 'text-only') {
+      const effectiveAiMode = options.aiMode || process.env.AI_MODE || 'vision';
+      if (process.env.GROQ_API_KEY && effectiveAiMode === 'text-only') {
         aiProvider = 'groq';
       }
       
