@@ -1,15 +1,38 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Filter } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { api } from '../api/client';
+import ImportedReportView from '../components/ImportedReportView';
 
 export default function ReportDashboard({ scanId }) {
   const [scan, setScan] = useState(null);
   const [pages, setPages] = useState([]);
+  const [importedReport, setImportedReport] = useState(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(true);
   const [expandedPage, setExpandedPage] = useState(null);
   const [filterSeverity, setFilterSeverity] = useState('ALL');
 
   useEffect(() => {
     api.getScan(scanId).then(setScan).catch(() => {});
+  }, [scanId]);
+
+  useEffect(() => {
+    const fetchImportedReport = async () => {
+      try {
+        const data = await api.getScan(scanId);
+        // Try to fetch imported report if this is a saved report URL
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:4500/api'}/report/${scanId}/json`);
+        if (res.ok) {
+          const reportData = await res.json();
+          setImportedReport(reportData);
+        }
+      } catch (err) {
+        console.log('No imported report available');
+      } finally {
+        setIsLoadingReport(false);
+      }
+    };
+    fetchImportedReport();
   }, [scanId]);
 
   useEffect(() => {
@@ -22,6 +45,13 @@ export default function ReportDashboard({ scanId }) {
     LOW: { bg: 'var(--surface3)', text: 'var(--muted)', border: 'var(--muted)' },
     CLEAN: { bg: 'var(--surface3)', text: 'var(--muted)', border: 'var(--muted)' },
   };
+
+  if (!scan && isLoadingReport) return <div className="content center" style={{ padding: '80px 0' }}>Loading report...</div>;
+
+  // If we have an imported JSON report, display that instead
+  if (importedReport && !isLoadingReport) {
+    return <ImportedReportView scanId={scanId} reportData={importedReport} />;
+  }
 
   if (!scan) return <div className="content center" style={{ padding: '80px 0' }}>Loading report...</div>;
 

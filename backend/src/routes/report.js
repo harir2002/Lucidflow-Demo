@@ -7,6 +7,7 @@ const { SEVERITY_RULES } = require('../services/severity');
 const theme = require('../theme');
 const { generateDynamicReport } = require('../services/reportGenerator');
 const { checkUrl } = require('../services/savedReports');
+const { getJsonReportForUrl, convertJsonToReportView } = require('../services/jsonReports');
 
 const router = express.Router();
 
@@ -46,6 +47,21 @@ function embedShot(doc,shotPath,y,opts={}) {
     return y+24;
   }
 }
+
+router.get('/:scanId/json', async (req, res) => {
+  const scan = db.prepare(`SELECT * FROM scans WHERE id = ?`).get(req.params.scanId);
+  if (!scan) return res.status(404).json({ error: 'Scan not found' });
+
+  // Check if this URL has an imported JSON report
+  const jsonReportData = getJsonReportForUrl(scan.target_url);
+  if (jsonReportData) {
+    const reportView = convertJsonToReportView(jsonReportData.report);
+    return res.json(reportView);
+  }
+
+  // No imported JSON report for this URL
+  return res.status(404).json({ error: 'No imported report available for this URL' });
+});
 
 router.get('/:scanId', async (req, res) => {
   const scan = db.prepare(`SELECT * FROM scans WHERE id = ?`).get(req.params.scanId);
