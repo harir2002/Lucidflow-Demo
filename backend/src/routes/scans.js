@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { startScan, pauseScan, resumeScan, cancelScan, isScanActive } = require('../services/scanOrchestrator');
 const { discoverAllUrls } = require('../services/sitemap');
+const { matchUrl } = require('../services/savedReports');
 
 module.exports = (io) => {
   const router = express.Router();
@@ -28,8 +29,29 @@ module.exports = (io) => {
     try { parsed = new URL(target_url); } catch { return res.status(400).json({ error: 'target_url is not a valid URL' }); }
 
     const id = uuid();
-    db.prepare(`INSERT INTO scans (id, target_url, url_pattern, scan_mode, domain_context, status) VALUES (?, ?, ?, ?, ?, 'discovering')`)
-      .run(id, target_url, url_pattern || null, scan_mode || 'one-page', domain_context || null);
+    
+    // Check if this is a Saved Report URL (exact match)
+    const savedReportMatch = matchUrl(target_url);
+    const isSavedReport = savedReportMatch !== null;
+    
+    db.prepare(`INSERT INTO scans (id, target_url, url_pattern, scan_mode, domain_context, status) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(id, target_url, url_pattern || null, scan_mode || 'one-page', domain_context || null, 
+           isSavedReport ? 'complete' : 'discovering');
+
+    // If it's a Saved Report, skip AI analysis and mark complete immediately
+    if (isSavedReport) {
+      console.log(`[SAVED-REPORT] Detected saved report for: ${target_url} (${savedReportMatch.reportId})`);
+      db.prepare(`INSERT INTO pages (id, scan_id, url, title, overall_risk, analyzed_at) VALUES (?, ?, ?, ?, ?, datetime('now'))`)
+        .run(uuid(), id, target_url, `Saved Report - ${savedReportMatch.reportId}`, 'INFO');
+      
+      // Emit complete event via websocket
+      setTimeout(() => {
+        io.to(id).emit('scan:complete', { message: 'Saved report loaded from PDF' });
+      }, 100);
+      
+      const response = { id, target_url, status: 'complete', saved_report: true, report_id: savedReportMatch.reportId };
+      return res.status(201).json(response);
+    }
 
     // Fire and forget — progress streamed via websocket
     startScan(id, target_url, url_pattern, io, {
