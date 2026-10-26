@@ -9,12 +9,14 @@ const URL_TO_JSON_MAPPING = [
     domain: 'creditinsurancecalculator.allianceinsurance.in',
     path: '/',
     jsonFile: path.join(__dirname, '..', '..', 'reports', 'alliance-insurance.json'),
+    filePath: path.join(__dirname, '..', '..', 'reports', 'Lucidflow_Dark Pattern_Alliance Insurance.pdf'),
     reportId: 'LF-AIBPL-2026-001',
   },
   {
     domain: 'insurance-deception-explorer.lovable.app',
     path: '/compare',
     jsonFile: path.join(__dirname, '..', '..', 'reports', 'abc-insurance.json'),
+    filePath: path.join(__dirname, '..', '..', 'reports', 'Lucidflow_Dark Pattern Report_ABC Insurance.pdf'),
     reportId: 'LF-AIBL-2026-001',
   },
 ];
