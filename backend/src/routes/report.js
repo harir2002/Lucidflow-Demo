@@ -1,10 +1,12 @@
 const express = require('express');
 const PDFDocument = require('pdfkit');
 const fs = require('fs');
+const path = require('path');
 const db = require('../db/database');
 const { SEVERITY_RULES } = require('../services/severity');
 const theme = require('../theme');
 const { generateDynamicReport } = require('../services/reportGenerator');
+const { checkUrl } = require('../services/savedReports');
 
 const router = express.Router();
 
@@ -48,6 +50,41 @@ function embedShot(doc,shotPath,y,opts={}) {
 router.get('/:scanId', async (req, res) => {
   const scan = db.prepare(`SELECT * FROM scans WHERE id = ?`).get(req.params.scanId);
   if (!scan) return res.status(404).json({ error: 'Scan not found' });
+
+  // ── Check if this is a Saved Report (exact URL match) ──
+  const savedReport = checkUrl(scan.target_url);
+  if (savedReport.found) {
+    console.log(`[REPORT] Returning saved report PDF for: ${scan.target_url}`);
+    
+    // Map URL to correct PDF file
+    const reportMapping = [
+      {
+        domain: 'creditinsurancecalculator.allianceinsurance.in',
+        filePath: path.join(__dirname, '..', '..', 'reports', 'Lucidflow_Dark Pattern_Alliance Insurance.pdf'),
+      },
+      {
+        domain: 'insurance-deception-explorer.lovable.app',
+        filePath: path.join(__dirname, '..', '..', 'reports', 'Lucidflow_Dark Pattern Report_ABC Insurance.pdf'),
+      },
+    ];
+    
+    let pdfPath = null;
+    for (const mapping of reportMapping) {
+      if (scan.target_url.includes(mapping.domain)) {
+        pdfPath = mapping.filePath;
+        break;
+      }
+    }
+    
+    if (pdfPath && fs.existsSync(pdfPath)) {
+      const fileName = path.basename(pdfPath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Content-Length', fs.statSync(pdfPath).size);
+      fs.createReadStream(pdfPath).pipe(res);
+      return;
+    }
+  }
 
   const pages = db.prepare(`SELECT * FROM pages WHERE scan_id = ?`).all(req.params.scanId);
   const findingsStmt = db.prepare(`SELECT * FROM findings WHERE page_id = ?`);
