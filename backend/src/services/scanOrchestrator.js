@@ -59,6 +59,34 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
       allUrls = [targetUrl];
       console.log(`[SCAN-MODE] One-page mode, allUrls: ${allUrls.length}`);
       emit(io, scanId, 'scan:log', { message: `One Page mode: scanning ${targetUrl}` });
+      
+      // ── Check if this is an imported report (skip actual scanning) ──
+      const importedReport = getJsonReportForUrl(targetUrl);
+      if (importedReport) {
+        console.log(`[SCAN-MODE] Imported report detected - skipping AI, using mock delay only`);
+        emit(io, scanId, 'scan:log', { message: `Imported report detected - preparing analysis...` });
+        
+        // Create placeholder page
+        const insertPage = db.prepare(`INSERT OR IGNORE INTO pages (id, scan_id, url, overall_risk, title) VALUES (?, ?, ?, ?, ?)`);
+        const pageId = uuid();
+        insertPage.run(pageId, scanId, targetUrl, 'INFO', importedReport.report.cover?.prepared_for || 'Imported Report');
+        
+        updateScan({ total_pages: 1, status: 'scanning' });
+        emit(io, scanId, 'scan:discovered', { totalPages: 1 });
+        
+        // Mock delay for imported reports
+        const delayMs = 120000 + Math.random() * 60000;
+        console.log(`[MOCK-SCAN] Imported report - simulating ${Math.round(delayMs/1000)}s...`);
+        emit(io, scanId, 'scan:log', { message: `Analyzing (${Math.round(delayMs/1000)}s)...` });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        
+        // Complete
+        updateScan({ scanned_pages: 1, status: 'complete' });
+        emit(io, scanId, 'scan:page-done', { url: targetUrl, findingsCount: importedReport.report.findings?.length || 0 });
+        emit(io, scanId, 'scan:complete', {});
+        console.log(`[SCAN-END] Imported report complete - no AI used`);
+        return;
+      }
     } else if (scanMode === 'main-domain' && selectedUrls && selectedUrls.length > 0) {
       // Main Domain mode: use pre-selected URLs from discovery
       allUrls = selectedUrls;
@@ -244,15 +272,6 @@ async function startScan(scanId, targetUrl, urlPattern, io, options = {}) {
 
     await browser.close().catch(() => {});
     console.log(`[SCAN-BROWSER] Browser closed after scanning ${scannedCount} pages`);
-
-    // ── Mock delay for imported reports (2-3 minutes simulation) ──
-    const hasImportedReport = getJsonReportForUrl(targetUrl);
-    if (hasImportedReport) {
-      const delayMs = 120000 + Math.random() * 60000; // 2-3 minutes random
-      console.log(`[MOCK-SCAN] Imported report found. Simulating ${Math.round(delayMs/1000)}s scan time...`);
-      emit(io, scanId, 'scan:log', { message: `Simulating scan analysis (${Math.round(delayMs/1000)}s)...` });
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
 
     const finalState = activeScans.get(scanId);
     if (finalState?.cancelled) {
