@@ -42,14 +42,29 @@ module.exports = (io) => {
     if (isSavedReport) {
       console.log(`[SAVED-REPORT] Detected saved report for: ${target_url} (${savedReportMatch.reportId})`);
       db.prepare(`INSERT INTO pages (id, scan_id, url, title, overall_risk, analyzed_at) VALUES (?, ?, ?, ?, ?, datetime('now'))`)
-        .run(uuid(), id, target_url, `Saved Report - ${savedReportMatch.reportId}`, 'INFO');
+        .run(uuid(), id, target_url, `${savedReportMatch.organisation} - ${savedReportMatch.reportId}`, 'INFO');
       
       // Emit complete event via websocket
       setTimeout(() => {
-        io.to(id).emit('scan:complete', { message: 'Saved report loaded from PDF' });
+        io.to(id).emit('scan:complete', { 
+          message: 'Report loaded from PDF',
+          reportData: {
+            organisation: savedReportMatch.organisation,
+            reportId: savedReportMatch.reportId,
+            issueDate: savedReportMatch.issueDate,
+          }
+        });
       }, 100);
       
-      const response = { id, target_url, status: 'complete', saved_report: true, report_id: savedReportMatch.reportId };
+      const response = { 
+        id, 
+        target_url, 
+        status: 'complete', 
+        saved_report: true, 
+        report_id: savedReportMatch.reportId,
+        organisation: savedReportMatch.organisation,
+        issue_date: savedReportMatch.issueDate,
+      };
       return res.status(201).json(response);
     }
 

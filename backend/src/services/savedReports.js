@@ -2,45 +2,57 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-// URL-to-Report mappings (Option B)
+// URL-to-Report mappings - EXACT URL PATHS
 const URL_TO_REPORT_MAPPING = [
   {
-    domain: 'allianceinsurance.in',
+    domain: 'creditinsurancecalculator.allianceinsurance.in',
+    path: '/',
     filePath: path.join(__dirname, '..', '..', 'reports', 'Lucidflow_Dark Pattern_Alliance Insurance.pdf'),
     reportId: 'LF-AIBPL-2026-001',
+    organisation: 'Alliance Insurance',
+    issueDate: '2026-01-15',
   },
   {
     domain: 'insurance-deception-explorer.lovable.app',
+    path: '/compare',
     filePath: path.join(__dirname, '..', '..', 'reports', 'Lucidflow_Dark Pattern Report_ABC Insurance.pdf'),
     reportId: 'LF-AIBL-2026-001',
+    organisation: 'ABC Insurance',
+    issueDate: '2026-01-20',
   },
 ];
 
 const CACHE_PATH = path.join(__dirname, '..', '..', 'data', 'saved-reports.json');
 
 /**
- * Normalize URL: remove trailing slash, lowercase, extract domain
+ * Normalize URL: extract domain and path
  */
 function normalizeUrl(url) {
   try {
     const parsed = new URL(url);
-    // Return scheme + domain (lowercased), no trailing slash
-    return `${parsed.protocol}//${parsed.hostname.toLowerCase()}`;
+    const domain = parsed.hostname.toLowerCase();
+    let path = parsed.pathname;
+    if (!path || path === '') path = '/';
+    if (path.endsWith('/') && path !== '/') path = path.slice(0, -1);
+    return { domain, path };
   } catch (err) {
     return null;
   }
 }
 
 /**
- * Match user URL against mapping
+ * Match user URL against mapping (exact domain + path match)
  */
 function matchUrl(userUrl) {
   const normalized = normalizeUrl(userUrl);
   if (!normalized) return null;
 
   for (const mapping of URL_TO_REPORT_MAPPING) {
-    const mappingUrl = `https://${mapping.domain.toLowerCase()}`;
-    if (normalized === mappingUrl) {
+    const mappingPath = mapping.path || '/';
+    const normalizedPath = normalized.path === '' ? '/' : normalized.path;
+    
+    if (normalized.domain === mapping.domain.toLowerCase() && 
+        (normalizedPath === mappingPath || normalizedPath === mappingPath + '/')) {
       return mapping;
     }
   }
